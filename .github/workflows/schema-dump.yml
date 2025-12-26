@@ -1,0 +1,48 @@
+name: schema-reference
+
+on:
+  push:
+    paths:
+      - 'migrations/**'
+      - 'scripts/schema_dump.sh'
+      - '.github/workflows/schema-dump.yml'
+      - 'docs/schema_reference.sql'
+  pull_request:
+    paths:
+      - 'migrations/**'
+      - 'scripts/schema_dump.sh'
+      - '.github/workflows/schema-dump.yml'
+      - 'docs/schema_reference.sql'
+
+jobs:
+  schema-dump:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run schema dump
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          I_UNDERSTAND: drop
+        run: ./scripts/schema_dump.sh
+
+      - name: Ensure snapshot committed
+        run: git diff --exit-code docs/schema_reference.sql

@@ -1,0 +1,3 @@
+-- LEGACY MIGRATION 0005_add_video_game_ratings.sql (no-op)
+-- Ratings columns consolidated into migrations_squashed/0340_video_games.sql
+-- This file is intentionally left as a no-op.

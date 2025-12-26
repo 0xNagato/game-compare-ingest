@@ -1,0 +1,58 @@
+-- 0488_media_kind_title.sql
+-- Introduce media_kind ('image'|'video') and human-readable title for media records
+-- Note: No DO blocks to keep compatibility with our SQL splitter. This migration
+-- runs once; idempotency inside the file is not required beyond IF NOT EXISTS where supported.
+
+-- Create enum type for media kind (image | video) idempotently
+DO $$ BEGIN
+  CREATE TYPE media_kind AS ENUM ('image','video');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- provider_media_links: add kind column (image|video); keep existing media_type (text) as label/deprecated
+ALTER TABLE IF EXISTS public.provider_media_links
+  ADD COLUMN IF NOT EXISTS kind media_kind;
+
+-- Backfill provider_media_links.kind based on existing media_type/title/url if null
+UPDATE public.provider_media_links p
+   SET kind = CASE
+     WHEN p.kind IS NOT NULL THEN p.kind
+     WHEN lower(coalesce(p.media_type,'')) IN ('video') THEN 'video'::media_kind
+     WHEN lower(coalesce(p.media_type,'')) IN ('trailer','gameplay','teaser','clip') THEN 'video'::media_kind
+     WHEN lower(coalesce(p.media_type,'')) IN ('image','screenshot','artwork','cover','hero','logo','icon','poster') THEN 'image'::media_kind
+     WHEN p.url ~* '\\.(mp4|webm|m3u8)$' THEN 'video'::media_kind
+     ELSE 'image'::media_kind
+   END
+ WHERE p.kind IS NULL;
+
+-- Ensure default + not null going forward
+ALTER TABLE IF EXISTS public.provider_media_links
+  ALTER COLUMN kind SET DEFAULT 'image'::media_kind;
+ALTER TABLE IF EXISTS public.provider_media_links
+  ALTER COLUMN kind SET NOT NULL;
+
+-- game_media: add kind and title (if table exists)
+ALTER TABLE IF EXISTS public.game_media
+  ADD COLUMN IF NOT EXISTS kind media_kind;
+
+ALTER TABLE IF EXISTS public.game_media
+  ADD COLUMN IF NOT EXISTS title text;
+
+-- Backfill game_media.kind and title
+UPDATE public.game_media gm
+   SET kind = CASE
+     WHEN gm.kind IS NOT NULL THEN gm.kind
+     WHEN gm.media_type IN ('trailer','gameplay') THEN 'video'::media_kind
+     ELSE 'image'::media_kind
+   END,
+       title = COALESCE(gm.title, gm.media_type::text)
+ WHERE gm.kind IS NULL OR gm.title IS NULL;
+
+-- Enforce default + not null for kind on game_media
+ALTER TABLE IF EXISTS public.game_media
+  ALTER COLUMN kind SET DEFAULT 'image'::media_kind;
+ALTER TABLE IF EXISTS public.game_media
+  ALTER COLUMN kind SET NOT NULL;
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS provider_media_links_kind_idx ON public.provider_media_links(kind);
+CREATE INDEX IF NOT EXISTS game_media_kind_idx ON public.game_media(kind);

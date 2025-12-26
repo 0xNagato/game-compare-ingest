@@ -1,0 +1,6 @@
+{
+  "provider": "playstation",
+  "task": "sync",
+  "args": { "region": "us" },
+  "provider_id": null
+}

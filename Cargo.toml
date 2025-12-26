@@ -1,0 +1,97 @@
+[package]
+name = "i-miss-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+fs = "0.0.5"
+full = "0.3.0"
+rayon = "1.11.0"
+reqwest = { version = "0.12.24", features = ["json"] }
+serde_json = "1.0.145"
+tokio = { version = "1.48.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+futures = "0.3.31"
+bytes = "1.7.1"
+gzip = "0.1.2"
+indexmap = { version = "2.6.0", features = ["serde"] }
+clap = { version = "4.5.19", features = ["derive"] }
+tokio-postgres = { version = "0.7.15", features = ["with-chrono-0_4"] }
+tokio-postgres-rustls = "0.12"
+# Align on rustls 0.23 across the tree to avoid mixed-type conflicts
+rustls = { version = "0.23", default-features = false }
+rustls-native-certs = "0.8"
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "sqlite",
+    "macros",
+    "chrono",
+    "json",
+    "migrate",
+    "uuid"
+] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
+csv = "1"
+memchr = "2"
+atoi = "2" # zero-copy integer parsing from &[u8]
+chrono = { version = "0.4.38", default-features = false, features = [
+    "clock",
+    "std",
+    "serde"
+] }
+sha2 = "0.10"
+simd-json = { version = "0.13", default-features = false }
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+    "rustls-tls-native-roots",
+    "connect"
+] }
+# Cargo.toml
+urlencoding = "2.1"
+hickory-resolver = "0.24" # async DNS resolver, AAAA-only support
+url = "2.5"
+# Local crate for PlayStation Store client types
+psstore-client = { path = "psstore_client" }
+itertools = "0.14.0"
+dotenv = "0.15.0"
+igdb-rs = "0.2.0"
+jsonwebtoken = "9.3.0"
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
+pem = "3.0.4"
+sha1 = "0.10.6"
+uuid = { version = "1.10.0", features = ["v4", "fast-rng", "serde"] }
+rand = "0.8.5"
+actix = "0.13.5"
+actix-web = { version = "4.9.0", default-features = false, features = [
+    "macros",
+    "compress-brotli",
+    "compress-gzip"
+] }
+awc = "3.8.1"
+async-trait = "0.1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+xal = "0.1.3"
+
+[features]
+# Enable CLI binaries by default so common cargo invocations work without extra flags.
+default = ["cli_bins"]
+cli_bins = []
+
+[[bin]]
+name = "gc"
+path = "src/bin/gc.rs"
+required-features = ["cli_bins"]
+
+[[bin]]
+name = "copy_sqlite_media"
+path = "src/bin/copy_sqlite_media.rs"
+
+[profile.release]
+opt-level = 3 # max speed
+lto = "thin" # or "fat" if you don't mind longer build times
+codegen-units = 1 # better optimisation, slower builds
+panic = "abort" # if you don't need unwinding across FFI
+debug = false
+strip = "debuginfo"

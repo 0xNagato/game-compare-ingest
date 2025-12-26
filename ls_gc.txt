@@ -1,0 +1,1 @@
+-rw-r--r--  1 lowkey  staff  4340 Nov 27 01:25:18 2025 gc_enus.log

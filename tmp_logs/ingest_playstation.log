@@ -1,0 +1,63 @@
+warning: associated function `normalize_locale_for_hash` is never used
+   --> psstore_client/src/root.rs:562:8
+    |
+163 | impl PsStoreClient {
+    | ------------------ associated function in this implementation
+...
+562 |     fn normalize_locale_for_hash(locale: &str) -> String {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `psstore-client` (lib) generated 1 warning
+warning: variable does not need to be mutable
+   --> src/lib.rs:512:29
+    |
+512 |                         let mut push_summary_media = |targets: &mut Vec<(
+    |                             ----^^^^^^^^^^^^^^^^^^
+    |                             |
+    |                             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: field `timeout_secs` is never read
+  --> src/database_ops/itad/provider.rs:24:5
+   |
+22 | pub struct ItadProvider {
+   |            ------------ field in this struct
+23 |     base_url: String,
+24 |     timeout_secs: u64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ItadProvider` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `collect_app_ids` is never used
+    --> src/database_ops/steam/provider.rs:1128:4
+     |
+1128 | fn collect_app_ids(value: &Value, out: &mut HashSet<String>) {
+     |    ^^^^^^^^^^^^^^^
+
+warning: `i-miss-rust` (lib) generated 3 warnings (run `cargo fix --lib -p i-miss-rust` to apply 1 suggestion)
+warning: struct `ProviderExecution` is never constructed
+  --> src/bin/ingest.rs:94:8
+   |
+94 | struct ProviderExecution {
+   |        ^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: enum `ProviderError` is never used
+   --> src/bin/ingest.rs:100:6
+    |
+100 | enum ProviderError {
+    |      ^^^^^^^^^^^^^
+
+warning: `i-miss-rust` (bin "ingest") generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.70s
+     Running `target/debug/ingest run --only playstation`
+[2m2025-11-27T12:43:59.374284Z[0m [32m INFO[0m [1mconnect[0m[1m{[0m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m180[1m}[0m[2m:[0m [2mi_miss_rust::database_ops::db[0m[2m:[0m connected to db
+[2m2025-11-27T12:43:59.374482Z[0m [32m INFO[0m [1mconnect[0m[1m{[0m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m180[1m}[0m[2m:[0m [2mi_miss_rust::database_ops::db[0m[2m:[0m AUTO_MIGRATE disabled; skipping migrations
+[2m2025-11-27T12:43:59.979224Z[0m [32m INFO[0m [2mingest[0m[2m:[0m ingest run start [3mproviders[0m[2m=[0mplaystation
+remember: restricting to releases between 2020-2025 inclusive
+

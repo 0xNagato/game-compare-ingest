@@ -1,0 +1,9 @@
+{
+  "3030-1": {
+    "guid": "3030-1",
+    "name": "Sample GB Game",
+    "image": {
+      "small_url": "https://example.com/sample_gb_cover.jpg"
+    }
+  }
+}

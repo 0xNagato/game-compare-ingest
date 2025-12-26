@@ -1,0 +1,5 @@
+-- LEGACY MIGRATION 0007_extend_media_tables.sql (no-op)
+-- Consolidated into squashed files:
+--   migrations_squashed/0360_game_images.sql
+--   migrations_squashed/0370_game_videos.sql
+-- This file is intentionally left as a no-op.

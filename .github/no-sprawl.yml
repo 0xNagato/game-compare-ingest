@@ -1,0 +1,19 @@
+name: no-sprawl-guard
+on: [pull_request]
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Detect added files
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          ADDED=$(git diff --name-status origin/${{ github.base_ref }}...HEAD | awk '$1 ~ /^A|R/ {print $0}')
+          if [ -n "$ADDED" ]; then
+            echo "Added or renamed files detected:"
+            echo "$ADDED"
+            # Require a justification line in PR body
+            PR_BODY=$(jq -r .pull_request.body "$GITHUB_EVENT_PATH")
+            echo "$PR_BODY" | grep -qi "Justification:" || { echo "No 'Justification:' found in PR body. Failing."; exit 1; }
+          fi

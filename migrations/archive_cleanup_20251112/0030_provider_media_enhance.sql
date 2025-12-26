@@ -1,0 +1,3 @@
+-- LEGACY MIGRATION 0030_provider_media_enhance.sql (no-op)
+-- Consolidated into migrations_squashed/0380_provider_media_links.sql
+-- This file is intentionally left as a no-op.

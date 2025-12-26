@@ -1,0 +1,4 @@
+-- 0480_media_staging_perf_indexes.sql
+-- Deprecated: legacy media staging tables have been removed in favor of
+-- inserting directly into canonical media tables. This migration remains only
+-- to preserve numbering and intentionally performs no work.

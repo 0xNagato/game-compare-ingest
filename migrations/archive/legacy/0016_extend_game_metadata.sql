@@ -1,0 +1,6 @@
+-- LEGACY MIGRATION 0016_extend_game_metadata.sql (no-op)
+-- Consolidated into squashed migrations:
+--   migrations_squashed/0330_video_game_titles.sql
+--   migrations_squashed/0340_video_games.sql
+--   migrations_squashed/0400_video_game_title_sources.sql
+-- This file is intentionally left as a no-op.

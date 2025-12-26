@@ -1,0 +1,1149 @@
+   Compiling psstore-client v0.1.0 (/Users/lowkey/Desktop/i-miss-rust/psstore_client)
+warning: associated function `normalize_locale_for_hash` is never used
+   --> psstore_client/src/root.rs:562:8
+    |
+163 | impl PsStoreClient {
+    | ------------------ associated function in this implementation
+...
+562 |     fn normalize_locale_for_hash(locale: &str) -> String {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+   Compiling i-miss-rust v0.1.0 (/Users/lowkey/Desktop/i-miss-rust)
+warning: `psstore-client` (lib) generated 1 warning
+warning: field `timeout_secs` is never read
+  --> src/database_ops/itad/provider.rs:24:5
+   |
+22 | pub struct ItadProvider {
+   |            ------------ field in this struct
+23 |     base_url: String,
+24 |     timeout_secs: u64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ItadProvider` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `collect_app_ids` is never used
+    --> src/database_ops/steam/provider.rs:1128:4
+     |
+1128 | fn collect_app_ids(value: &Value, out: &mut HashSet<String>) {
+     |    ^^^^^^^^^^^^^^^
+
+warning: `i-miss-rust` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.45s
+     Running `target/debug/gc ps-prices --regions en-us --page-size 50 --max-pages 1`
+[2m2025-11-27T10:39:26.721525Z[0m [32m INFO[0m configuration snapshot [3mtarget[0m[2m=[0m"preflight" [3mtitle[0m[2m=[0m"psstore-prices-ingest" [3msnapshot[0m[2m=[0m[("SUPABASE_DB_URL", "postgresql://***:db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres"), ("PS_STORE_REGIONS", "en-us"), ("PS_PAGE_SIZE", "50"), ("PS_MAX_PAGES", "1"), ("PS4_CATEGORY", "44d8bb20-653e-431e-8ad0-c0a365f68d2f"), ("PS5_CATEGORY", "4cbf39e2-5749-4970-ba81-93a489e4570c"), ("PS_HASH", "9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09"), ("YEAR_MIN", "2020"), ("YEAR_MAX", "2025")]
+remember: restricting to releases between 2020-2025 inclusive
+
+[2m2025-11-27T10:39:26.722077Z[0m [32m INFO[0m psstore ingest using persisted query hash override [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:39:28.144834Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m2[0m
+[2m2025-11-27T10:39:32.336679Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m2[0m
+[2m2025-11-27T10:39:32.860672Z[0m [32m INFO[0m [1mingest_run_start[0m: column "region_code" of relation "provider_ingest_runs" already exists, skipping [2m[3mprovider_id[0m[2m=[0m17 [3mregion_code[0m[2m=[0mSome("en-us")[0m
+[2m2025-11-27T10:39:38.284060Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m10[0m
+[2m2025-11-27T10:39:42.931137Z[0m [33m WARN[0m [1mensure_national_jurisdiction[0m: slow statement: execution time exceeded alert threshold [3msummary[0m[2m=[0m"SELECT id FROM jurisdictions …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM jurisdictions WHERE country_id=$1 AND region_code IS NULL\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m1.253818084s [3melapsed_secs[0m[2m=[0m1.253818084 [3mslow_threshold[0m[2m=[0m1s [2m[3mcountry_id[0m[2m=[0m1[0m
+[2m2025-11-27T10:39:48.048548Z[0m [33m WARN[0m [1mensure_platform[0m: slow statement: execution time exceeded alert threshold [3msummary[0m[2m=[0m"SELECT id FROM platforms …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM platforms WHERE name=$1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m2.0564s [3melapsed_secs[0m[2m=[0m2.0564 [3mslow_threshold[0m[2m=[0m1s [2m[3mname[0m[2m=[0m"PS5" [3m_slug[0m[2m=[0mSome("ps5")[0m
+[2m2025-11-27T10:39:53.210952Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m1 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:39:53.211104Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e5e97b-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:39:58.293681Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e5e97b-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m5082
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "9487b81f-5c35-4f3f-91f4-8e7089f012c7",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "9487b81f-5c35-4f3f-91f4-8e7089f012c7",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:39:58.293984Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e5e97b-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:39:58.294015Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:39:58.596332Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e5fe84-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:39:59.168804Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e5fe84-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m572
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "37a74841-87e5-41cb-a62f-3ea3e7a1c795",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "37a74841-87e5-41cb-a62f-3ea3e7a1c795",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:39:59.169324Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e5fe84-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:39:59.169403Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:39:59.771740Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e6031b-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:00.192461Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e6031b-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m420
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "95e2a752-ca57-4c4a-bac1-a5c64941f297",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "95e2a752-ca57-4c4a-bac1-a5c64941f297",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:00.192745Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e6031b-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:00.192783Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:00.192911Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS4 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m50 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("95e2a752-ca57-4c4a-bac1-a5c64941f297"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("95e2a752-ca57-4c4a-bac1-a5c64941f297"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:00.193015Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m2 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:00.193081Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e604c1-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A150%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:00.597760Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e604c1-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m404
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "4a3cb65c-79ea-436f-b028-decc04a0390a",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "4a3cb65c-79ea-436f-b028-decc04a0390a",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:00.598117Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e604c1-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:00.598157Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:00.900478Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e60784-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A150%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:01.309224Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e60784-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m408
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "ad2fae97-f55a-4473-8d7b-efcdf9b667bc",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "ad2fae97-f55a-4473-8d7b-efcdf9b667bc",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:01.309676Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e60784-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:01.309735Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:01.911065Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e60b77-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A150%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:02.350856Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e60b77-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m439
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "10547a7d-952b-45ce-a4fd-5c5933a22dd5",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "10547a7d-952b-45ce-a4fd-5c5933a22dd5",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:02.351284Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e60b77-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:02.351343Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:02.351413Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS4 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m150 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("10547a7d-952b-45ce-a4fd-5c5933a22dd5"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("10547a7d-952b-45ce-a4fd-5c5933a22dd5"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:02.351547Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m3 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:02.351642Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e60d2f-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A100%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:02.962579Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e60d2f-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m610
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "030821ba-30aa-453c-b551-2baa2ab8a143",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "030821ba-30aa-453c-b551-2baa2ab8a143",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:02.963751Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e60d2f-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:02.963833Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:03.265250Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e610c1-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A100%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:03.750453Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e610c1-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m485
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "00f27206-76d7-405d-a79a-14a969175fe9",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "00f27206-76d7-405d-a79a-14a969175fe9",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:03.750848Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e610c1-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:03.750903Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:04.352314Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61500-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A100%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:04.888049Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61500-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m535
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "3617f0f6-fd50-45e3-8fcb-2680a32f0bbd",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "3617f0f6-fd50-45e3-8fcb-2680a32f0bbd",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:04.888949Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e61500-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:04.889010Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:04.889087Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS4 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m100 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("3617f0f6-fd50-45e3-8fcb-2680a32f0bbd"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("3617f0f6-fd50-45e3-8fcb-2680a32f0bbd"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:04.889244Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m4 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:04.889338Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61719-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A250%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:05.345235Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61719-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m455
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "2ddffe16-813d-488e-836f-0a1efb18973a",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "2ddffe16-813d-488e-836f-0a1efb18973a",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:05.345681Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e61719-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:05.345761Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:05.647197Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61a0f-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A250%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:06.034469Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61a0f-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m387
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "1bbcf9dc-e641-42a3-9e9b-2624c23b7f2a",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "1bbcf9dc-e641-42a3-9e9b-2624c23b7f2a",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:06.034816Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e61a0f-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:06.034861Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:06.636195Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61dec-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A250%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:07.188924Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e61dec-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m552
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "d89354ad-ffb8-45a8-ad2b-a38f241df5dc",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "d89354ad-ffb8-45a8-ad2b-a38f241df5dc",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:07.189297Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e61dec-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:07.189382Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:07.189454Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS4 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m250 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("d89354ad-ffb8-45a8-ad2b-a38f241df5dc"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("d89354ad-ffb8-45a8-ad2b-a38f241df5dc"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:07.189505Z[0m [33m WARN[0m psstore exhausted fallback sizes [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS4 [3moffset[0m[2m=[0m0 [3mskip[0m[2m=[0mtrue
+[2m2025-11-27T10:40:07.189646Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m5 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:07.189712Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62015-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:08.547322Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62015-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m1357
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "37ca3a61-ad65-472c-8321-3a14a8ff3cd4",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "37ca3a61-ad65-472c-8321-3a14a8ff3cd4",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:08.547596Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e62015-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:08.547635Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:08.849257Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62691-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:09.286147Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62691-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m436
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "5a2947af-5704-43f7-8b35-e6bb49f3f477",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "5a2947af-5704-43f7-8b35-e6bb49f3f477",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:09.286541Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e62691-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:09.286642Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:09.887806Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62a9f-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:10.340420Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62a9f-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m452
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "a1c36562-a5a7-4726-9675-5bf228db9b51",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "a1c36562-a5a7-4726-9675-5bf228db9b51",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:10.341087Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e62a9f-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:10.341170Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:10.341258Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS5 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m50 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("a1c36562-a5a7-4726-9675-5bf228db9b51"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("a1c36562-a5a7-4726-9675-5bf228db9b51"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:10.341461Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m6 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:10.341590Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62c65-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A150%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:10.805907Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62c65-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m464
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "fbe61278-191e-4f93-8ce2-9e628c614a8b",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "fbe61278-191e-4f93-8ce2-9e628c614a8b",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:10.806326Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e62c65-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:10.806388Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:11.108230Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62f64-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A150%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:11.601365Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e62f64-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m493
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "495ad51b-4892-4248-84a8-bdeb379245a5",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "495ad51b-4892-4248-84a8-bdeb379245a5",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:11.601701Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e62f64-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:11.601743Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:12.202757Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e633aa-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A150%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:13.284448Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e633aa-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m1081
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "6d3412de-0357-49fc-833f-99b1bbf7b459",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "6d3412de-0357-49fc-833f-99b1bbf7b459",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:13.284791Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e633aa-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:13.284854Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:13.284935Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS5 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m150 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("6d3412de-0357-49fc-833f-99b1bbf7b459"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("6d3412de-0357-49fc-833f-99b1bbf7b459"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:13.285085Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m7 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:13.285180Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e637e5-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A100%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:13.855772Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e637e5-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m570
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "7870df59-4300-49fb-8296-93913d8fa580",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "7870df59-4300-49fb-8296-93913d8fa580",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:13.855991Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e637e5-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:13.856017Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:14.157407Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e63b4d-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A100%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:14.624124Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e63b4d-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m466
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "e4971ed9-3f1f-4766-bae7-54109526241d",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "e4971ed9-3f1f-4766-bae7-54109526241d",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:14.624541Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e63b4d-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:14.624615Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:15.226287Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e63f7a-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A100%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:15.604894Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e63f7a-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m378
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "a88a5605-2bbe-4b69-b7f0-bcb77238c953",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "a88a5605-2bbe-4b69-b7f0-bcb77238c953",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:15.605309Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e63f7a-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:15.605386Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:15.605487Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS5 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m100 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("a88a5605-2bbe-4b69-b7f0-bcb77238c953"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("a88a5605-2bbe-4b69-b7f0-bcb77238c953"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:15.605664Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m8 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T10:40:15.605786Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e640f5-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A250%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:16.351875Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e640f5-1 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m746
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "a75ee883-2e4c-4373-b477-e5922a035610",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "a75ee883-2e4c-4373-b477-e5922a035610",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:16.352286Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e640f5-1 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:16.352339Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m1 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:16.654410Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e6450e-2 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A250%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:17.077598Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e6450e-2 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m423
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "2d64ca73-bc78-4c44-aca4-771c2ac2fe5e",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "2d64ca73-bc78-4c44-aca4-771c2ac2fe5e",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:17.078897Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e6450e-2 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:17.078979Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m2 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:17.681330Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e64911-3 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%224cbf39e2-5749-4970-ba81-93a489e4570c%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A250%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T10:40:18.096289Z[0m [32m INFO[0m ps op_get response [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac4e64911-3 [3mstatus[0m[2m=[0m200 [3mbody_len[0m[2m=[0m1069 [3melapsed_ms[0m[2m=[0m414
+[psstore op=categoryGridRetrieve] {
+  "data": {
+    "categoryGridRetrieve": null
+  },
+  "errors": [
+    {
+      "apiName": "getCategory",
+      "error": {
+        "code": 3165954,
+        "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+        "reason": "internal_error",
+        "referenceId": "8f3e9467-01cb-41bf-8426-2852fac45007",
+        "source": "api"
+      },
+      "errorCode": 3165954,
+      "extensions": {
+        "apiName": "getCategory",
+        "error": {
+          "code": 3165954,
+          "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+          "reason": "internal_error",
+          "referenceId": "8f3e9467-01cb-41bf-8426-2852fac45007",
+          "source": "api"
+        },
+        "errorCode": 3165954,
+        "humanReadableCode": "",
+        "humanReadableValidationErrors": [],
+        "statusCode": 500,
+        "type": "NimbusNormalizedError"
+      },
+      "humanReadableCode": "",
+      "humanReadableValidationErrors": [],
+      "message": "Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]",
+      "path": [
+        "categoryGridRetrieve"
+      ],
+      "statusCode": 500,
+      "type": "NimbusNormalizedError"
+    }
+  ]
+}
+[2m2025-11-27T10:40:18.096812Z[0m [33m WARN[0m ps op_get graphql error [3mop[0m[2m=[0mcategoryGridRetrieve [3mreq_id[0m[2m=[0m19ac4e64911-3 [3mcode_i64[0m[2m=[0mNone [3mcode_str[0m[2m=[0mNone [3mmsg[0m[2m=[0mError getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed] [3msample_body[0m[2m=[0m{"errors":[{"message":"Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]","path":["categoryGridRetrieve"],"extensions"
+[2m2025-11-27T10:40:18.096886Z[0m [33m WARN[0m ps op_get graphql transient error; retrying [3mattempt[0m[2m=[0m3 [3mop[0m[2m=[0mcategoryGridRetrieve
+[2m2025-11-27T10:40:18.096982Z[0m [33m WARN[0m psstore page fetch failed; trying fallback size [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS5 [3moffset[0m[2m=[0m0 [3msize[0m[2m=[0m250 [3merror[0m[2m=[0mother: graphql errors: [Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("8f3e9467-01cb-41bf-8426-2852fac45007"), "source": String("api")}, "errorCode": Number(3165954), "extensions": Object {"apiName": String("getCategory"), "error": Object {"code": Number(3165954), "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "reason": String("internal_error"), "referenceId": String("8f3e9467-01cb-41bf-8426-2852fac45007"), "source": String("api")}, "errorCode": Number(3165954), "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "statusCode": Number(500), "type": String("NimbusNormalizedError")}, "humanReadableCode": String(""), "humanReadableValidationErrors": Array [], "message": String("Error getting id list from Elasticsearch: Elasticsearch exception [type=search_phase_execution_exception, reason=all shards failed]"), "path": Array [String("categoryGridRetrieve")], "statusCode": Number(500), "type": String("NimbusNormalizedError")}]
+[2m2025-11-27T10:40:18.097041Z[0m [33m WARN[0m psstore exhausted fallback sizes [3mlocale[0m[2m=[0men-us [3mplatform[0m[2m=[0mPS5 [3moffset[0m[2m=[0m0 [3mskip[0m[2m=[0mtrue
+[2m2025-11-27T10:40:18.097243Z[0m [33m WARN[0m no price rows were written during ingest [3mprovider_id[0m[2m=[0m17
+[2m2025-11-27T10:40:18.097288Z[0m [32m INFO[0m no offer jurisdictions touched; skipping price propagation verification [3mprovider_id[0m[2m=[0m17
+[2m2025-11-27T10:40:18.097386Z[0m [32m INFO[0m no provider items processed; skipping media verification [3mprovider_id[0m[2m=[0m17
+[2m2025-11-27T10:40:18.097443Z[0m [32m INFO[0m bundle price coverage summary [3mprovider_id[0m[2m=[0m17 [3mbundle_rows_ingested[0m[2m=[0m0 [3mbundle_rows_skipped[0m[2m=[0m0 [3mbundle_offer_jurisdictions_ingested[0m[2m=[0m0 [3mbundle_offer_jurisdictions_skipped[0m[2m=[0m0
+[2m2025-11-27T10:40:18.097492Z[0m [32m INFO[0m psstore ingest verification complete [3mprovider_id[0m[2m=[0m17 [3mprice_rows[0m[2m=[0m0 [3mprovider_items[0m[2m=[0m0 [3moffer_jurisdictions[0m[2m=[0m0
+[2m2025-11-27T10:40:19.961228Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m2[0m

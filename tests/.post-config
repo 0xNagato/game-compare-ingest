@@ -1,0 +1,15 @@
+{
+  "endpoints": [
+    { "fileMatch": ["*.json"], "url": "http://localhost:8080/" }
+  ],
+  "headers": {
+    "Connection":   "Keep-Alive"
+  },
+  "response": {
+    "folder":       "response"
+  },
+  "variables": {
+    "{{var-1}}":    "some value"
+  },
+  "additionalProperties": { }
+}

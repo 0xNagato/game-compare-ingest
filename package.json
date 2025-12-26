@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@modelcontextprotocol/server-memory": "^2025.9.25",
+    "linear-mcp-server": "^0.1.0"
+  }
+}

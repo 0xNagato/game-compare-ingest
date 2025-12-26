@@ -1,0 +1,3 @@
+-- LEGACY MIGRATION 0009_video_game_ratings_by_locale.sql (no-op)
+-- Consolidated into migrations_squashed/0390_video_game_ratings_by_locale.sql
+-- This file is intentionally left as a no-op.

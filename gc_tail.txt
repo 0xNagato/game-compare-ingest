@@ -1,0 +1,40 @@
+163 | impl PsStoreClient {
+    | ------------------ associated function in this implementation
+...
+556 |     fn normalize_locale_for_hash(locale: &str) -> String {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `psstore-client` (lib) generated 1 warning
+warning: field `timeout_secs` is never read
+  --> src/database_ops/itad/provider.rs:24:5
+   |
+22 | pub struct ItadProvider {
+   |            ------------ field in this struct
+23 |     base_url: String,
+24 |     timeout_secs: u64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ItadProvider` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `collect_app_ids` is never used
+    --> src/database_ops/steam/provider.rs:1130:4
+     |
+1130 | fn collect_app_ids(value: &Value, out: &mut HashSet<String>) {
+     |    ^^^^^^^^^^^^^^^
+
+warning: `i-miss-rust` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.88s
+     Running `target/debug/gc ps-prices --regions en-us --page-size 50 --max-pages 1`
+[2m2025-11-27T00:24:57.862528Z[0m [32m INFO[0m configuration snapshot [3mtarget[0m[2m=[0m"preflight" [3mtitle[0m[2m=[0m"psstore-prices-ingest" [3msnapshot[0m[2m=[0m[("SUPABASE_DB_URL", "postgresql://***:db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres"), ("PS_STORE_REGIONS", "en-us"), ("PS_PAGE_SIZE", "50"), ("PS_MAX_PAGES", "1"), ("PS4_CATEGORY", "44d8bb20-653e-431e-8ad0-c0a365f68d2f"), ("PS5_CATEGORY", "4cbf39e2-5749-4970-ba81-93a489e4570c"), ("PS_HASH", "9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09"), ("YEAR_MIN", "2020"), ("YEAR_MAX", "2025")]
+remember: restricting to releases between 2020-2025 inclusive
+
+[2m2025-11-27T00:24:57.862793Z[0m [32m INFO[0m psstore ingest using persisted query hash override [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-11-27T00:24:59.304877Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m2[0m
+[2m2025-11-27T00:25:02.898680Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m2[0m
+[2m2025-11-27T00:25:03.370898Z[0m [32m INFO[0m [1mingest_run_start[0m: column "region_code" of relation "provider_ingest_runs" already exists, skipping [2m[3mprovider_id[0m[2m=[0m17 [3mregion_code[0m[2m=[0mSome("en-us")[0m
+[2m2025-11-27T00:25:07.411497Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres" [3mmax_connections[0m[2m=[0m10[0m
+[2m2025-11-27T00:25:18.019524Z[0m [32m INFO[0m ps op_get hash metrics [3mop[0m[2m=[0mcategoryGridRetrieve [3meffective_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mexpected_hash[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09 [3mtotal_requests[0m[2m=[0m1 [3mmismatch_total[0m[2m=[0m0
+[2m2025-11-27T00:25:18.019732Z[0m [32m INFO[0m ps op_get request [3mop[0m[2m=[0mcategoryGridRetrieve [3mlocale[0m[2m=[0men-US [3mreq_id[0m[2m=[0m19ac2b33dc3-1 [3murl[0m[2m=[0mhttps://web.np.playstation.com/api/graphql/v1/op?operationName=categoryGridRetrieve&variables=%7B%22facetOptions%22%3A%5B%5D%2C%22filterBy%22%3A%5B%5D%2C%22id%22%3A%2244d8bb20-653e-431e-8ad0-c0a365f68d2f%22%2C%22pageArgs%22%3A%7B%22offset%22%3A0%2C%22size%22%3A50%7D%2C%22sortBy%22%3A%7B%22isAscending%22%3Afalse%2C%22name%22%3A%22releaseDate%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%229845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09%22%7D%7D [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09

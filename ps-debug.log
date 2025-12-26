@@ -1,0 +1,152 @@
+warning: associated function `normalize_locale_for_hash` is never used
+   --> psstore_client/src/root.rs:562:8
+    |
+163 | impl PsStoreClient {
+    | ------------------ associated function in this implementation
+...
+562 |     fn normalize_locale_for_hash(locale: &str) -> String {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `psstore-client` (lib) generated 1 warning
+warning: variable does not need to be mutable
+   --> src/lib.rs:474:29
+    |
+474 |                         let mut push_summary_media = |targets: &mut Vec<(
+    |                             ----^^^^^^^^^^^^^^^^^^
+    |                             |
+    |                             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: field `timeout_secs` is never read
+  --> src/database_ops/itad/provider.rs:24:5
+   |
+22 | pub struct ItadProvider {
+   |            ------------ field in this struct
+23 |     base_url: String,
+24 |     timeout_secs: u64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ItadProvider` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `collect_app_ids` is never used
+    --> src/database_ops/steam/provider.rs:1095:4
+     |
+1095 | fn collect_app_ids(value: &Value, out: &mut HashSet<String>) {
+     |    ^^^^^^^^^^^^^^^
+
+warning: `i-miss-rust` (lib) generated 3 warnings (run `cargo fix --lib -p i-miss-rust` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.76s
+     Running `target/debug/gc ps-prices --regions en-us --page-size 50 --max-pages 1`
+[2m2025-12-17T13:24:42.005315Z[0m [32m INFO[0m configuration snapshot [3mtarget[0m[2m=[0m"preflight" [3mtitle[0m[2m=[0m"psstore-prices-ingest" [3msnapshot[0m[2m=[0m[("SUPABASE_IPV6_DB", "postgresql://postgres:Osmgx7MGGEYMeyuQ@[2a05:d018:135e:160e:3efa:5995:753b:a4fb]:5432/postgres?sslmode=require"), ("SUPABASE_DB_URL", "postgresql://***:db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres"), ("PS_STORE_REGIONS", "en-us"), ("PS_PAGE_SIZE", "50"), ("PS_MAX_PAGES", "1"), ("PS4_CATEGORY", "44d8bb20-653e-431e-8ad0-c0a365f68d2f"), ("PS5_CATEGORY", "4cbf39e2-5749-4970-ba81-93a489e4570c"), ("PS_HASH", "9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09"), ("YEAR_MIN", "2020"), ("YEAR_MAX", "2025")]
+[2m2025-12-17T13:24:42.005740Z[0m [32m INFO[0m using IPv6 DSN with hostaddr override + hostname for TLS [3mtarget[0m[2m=[0m"env"
+remember: restricting to releases between 2020-2025 inclusive
+
+[2m2025-12-17T13:24:42.005903Z[0m [32m INFO[0m psstore ingest using persisted query hash override [3msha256[0m[2m=[0m9845afc0dbaab4965f6563fffc703f588c8e76792000e8610843b8d3ee9c4c09
+[2m2025-12-17T13:24:43.005669Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05%3Ad018%3A135e%3A160e%3A3efa%3A5995%3A753b%3Aa4fb" [3mmax_connections[0m[2m=[0m2[0m
+[2m2025-12-17T13:24:43.397196Z[0m [34mDEBUG[0m [1mensure_provider[0m: [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.tables …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.tables WHERE table_schema = ANY (current_schemas(true)) AND table_name = $1 LIMIT 1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m271.916583ms [3melapsed_secs[0m[2m=[0m0.271916583 [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:44.620690Z[0m [34mDEBUG[0m [1mensure_provider[0m: [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.tables …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.tables WHERE table_schema = ANY (current_schemas(true)) AND table_name = $1 LIMIT 1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m242.381458ms [3melapsed_secs[0m[2m=[0m0.242381458 [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:44.979512Z[0m [34mDEBUG[0m [1mensure_provider[0m: [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.tables …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.tables WHERE table_schema = ANY (current_schemas(true)) AND table_name = $1 LIMIT 1\n" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m240.133875ms [3melapsed_secs[0m[2m=[0m0.240133875 [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:44.979573Z[0m [33m WARN[0m [1mensure_provider[0m: php compat: supporting tables partially missing; continuing with sku_regions-only mapping [3mcountries[0m[2m=[0mtrue [3mjurisdictions[0m[2m=[0mfalse [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:44.979587Z[0m [34mDEBUG[0m [1mensure_provider[0m: php compatibility mode enabled (sku_regions detected) [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:45.339606Z[0m [34mDEBUG[0m [1mensure_provider[0m: [3msummary[0m[2m=[0m"SELECT id FROM game_providers …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM game_providers WHERE provider_key = $1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m240.324459ms [3melapsed_secs[0m[2m=[0m0.240324459 [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:46.520072Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05%3Ad018%3A135e%3A160e%3A3efa%3A5995%3A753b%3Aa4fb" [3mmax_connections[0m[2m=[0m2[0m
+[2m2025-12-17T13:24:46.880889Z[0m [34mDEBUG[0m [1mingest_run_start[0m: [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.tables …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.tables WHERE table_schema='public' AND table_name='provider_ingest_runs' LIMIT 1\n" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m240.683458ms [3melapsed_secs[0m[2m=[0m0.240683458 [2m[3mprovider_id[0m[2m=[0m2667 [3mregion_code[0m[2m=[0mSome("en-us")[0m
+[2m2025-12-17T13:24:47.895631Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05%3Ad018%3A135e%3A160e%3A3efa%3A5995%3A753b%3Aa4fb" [3mmax_connections[0m[2m=[0m10[0m
+[2m2025-12-17T13:24:48.253560Z[0m [34mDEBUG[0m [3msummary[0m[2m=[0m"SET search_path TO public" [3mdb.statement[0m[2m=[0m"" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m238.664625ms [3melapsed_secs[0m[2m=[0m0.238664625
+[2m2025-12-17T13:24:49.547023Z[0m [34mDEBUG[0m [1mensure_currency[0m: [3msummary[0m[2m=[0m"SELECT id FROM currencies …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM currencies WHERE code=$1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m238.66475ms [3melapsed_secs[0m[2m=[0m0.23866475 [2m[3mcode[0m[2m=[0m"USD" [3mname[0m[2m=[0m"US Dollar" [3mminor_unit[0m[2m=[0m2[0m
+[2m2025-12-17T13:24:49.910359Z[0m [34mDEBUG[0m [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.tables …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.tables WHERE table_schema = ANY (current_schemas(true)) AND table_name = $1 LIMIT 1\n" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m243.824459ms [3melapsed_secs[0m[2m=[0m0.243824459
+[2m2025-12-17T13:24:50.291054Z[0m [34mDEBUG[0m [3msummary[0m[2m=[0m"SELECT id FROM sku_regions …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM sku_regions WHERE UPPER(region_code) = $1 LIMIT 1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m262.23625ms [3melapsed_secs[0m[2m=[0m0.26223625
+[2m2025-12-17T13:24:50.301037Z[0m [34mDEBUG[0m [1mensure_provider[0m: php compatibility mode enabled (sku_regions detected) [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:50.651330Z[0m [34mDEBUG[0m [1mensure_provider[0m: [3msummary[0m[2m=[0m"SELECT id FROM game_providers …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM game_providers WHERE provider_key = $1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m234.47125ms [3melapsed_secs[0m[2m=[0m0.23447125 [2m[3mname[0m[2m=[0m"playstation_store" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("ps-store")[0m
+[2m2025-12-17T13:24:50.651514Z[0m [34mDEBUG[0m [1mensure_retailer[0m: php compatibility mode enabled (sku_regions detected) [2m[3mname[0m[2m=[0m"PlayStation" [3mslug[0m[2m=[0mSome("playstation")[0m
+[2m2025-12-17T13:24:50.651584Z[0m [34mDEBUG[0m [1mensure_retailer[0m:[1mensure_provider[0m: php compatibility mode enabled (sku_regions detected) [2m[3mname[0m[2m=[0m"PlayStation" [3mslug[0m[2m=[0mSome("playstation")[0m [2m[3mname[0m[2m=[0m"PlayStation" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("playstation")[0m
+[2m2025-12-17T13:24:51.007948Z[0m [34mDEBUG[0m [1mensure_retailer[0m:[1mensure_provider[0m: [3msummary[0m[2m=[0m"SELECT id FROM game_providers …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM game_providers WHERE provider_key = $1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m239.442625ms [3melapsed_secs[0m[2m=[0m0.239442625 [2m[3mname[0m[2m=[0m"PlayStation" [3mslug[0m[2m=[0mSome("playstation")[0m [2m[3mname[0m[2m=[0m"PlayStation" [3mkind[0m[2m=[0m"storefront" [3mslug[0m[2m=[0mSome("playstation")[0m
+[2m2025-12-17T13:24:51.365253Z[0m [34mDEBUG[0m [1mensure_retailer[0m: [3msummary[0m[2m=[0m"SELECT id FROM game_retailers …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM game_retailers WHERE retailer_key = $1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m238.751375ms [3melapsed_secs[0m[2m=[0m0.238751375 [2m[3mname[0m[2m=[0m"PlayStation" [3mslug[0m[2m=[0mSome("playstation")[0m
+[2m2025-12-17T13:24:51.724654Z[0m [34mDEBUG[0m [1mensure_platform[0m: [3msummary[0m[2m=[0m"SELECT id FROM platforms …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM platforms WHERE name=$1\n" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m236.703125ms [3melapsed_secs[0m[2m=[0m0.236703125 [2m[3mname[0m[2m=[0m"PS4" [3m_slug[0m[2m=[0mSome("ps4")[0m
+[2m2025-12-17T13:24:52.097435Z[0m [34mDEBUG[0m [1mensure_platform[0m: [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.columns …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.columns WHERE table_name='platforms' AND column_name='code' AND table_schema = ANY (current_schemas(true)) LIMIT 1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m255.138042ms [3melapsed_secs[0m[2m=[0m0.255138042 [2m[3mname[0m[2m=[0m"PS4" [3m_slug[0m[2m=[0mSome("ps4")[0m
+[2m2025-12-17T13:24:52.461931Z[0m [34mDEBUG[0m [1mensure_platform[0m: [3msummary[0m[2m=[0m"SELECT TRUE FROM information_schema.columns …" [3mdb.statement[0m[2m=[0m"\n\nSELECT TRUE FROM information_schema.columns WHERE table_name='platforms' AND column_name='family' AND table_schema = ANY (current_schemas(true)) LIMIT 1\n" [3mrows_affected[0m[2m=[0m1 [3mrows_returned[0m[2m=[0m1 [3melapsed[0m[2m=[0m248.341708ms [3melapsed_secs[0m[2m=[0m0.248341708 [2m[3mname[0m[2m=[0m"PS4" [3m_slug[0m[2m=[0mSome("ps4")[0m
+[2m2025-12-17T13:24:52.829248Z[0m [34mDEBUG[0m [1mensure_platform[0m: [3msummary[0m[2m=[0m"INSERT INTO platforms (name, …" [3mdb.statement[0m[2m=[0m"\n\nINSERT INTO platforms (name, code, family) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id\n" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m238.948583ms [3melapsed_secs[0m[2m=[0m0.238948583 [2m[3mname[0m[2m=[0m"PS4" [3m_slug[0m[2m=[0mSome("ps4")[0m
+[2m2025-12-17T13:24:53.186635Z[0m [34mDEBUG[0m [1mensure_platform[0m: [3msummary[0m[2m=[0m"SELECT id FROM platforms …" [3mdb.statement[0m[2m=[0m"\n\nSELECT id FROM platforms WHERE name=$1\n" [3mrows_affected[0m[2m=[0m0 [3mrows_returned[0m[2m=[0m0 [3melapsed[0m[2m=[0m235.707666ms [3melapsed_secs[0m[2m=[0m0.235707666 [2m[3mname[0m[2m=[0m"PS4" [3m_slug[0m[2m=[0mSome("ps4")[0m
+[2m2025-12-17T13:24:54.131087Z[0m [32m INFO[0m [1mconnect_no_migrate[0m: connected to db (no-migrate) [2m[3mdatabase_url[0m[2m=[0m"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05%3Ad018%3A135e%3A160e%3A3efa%3A5995%3A753b%3Aa4fb" [3mmax_connections[0m[2m=[0m2[0m
+Error: no rows returned by a query that expected to return at least one row
+
+Stack backtrace:
+   0: std::backtrace_rs::backtrace::libunwind::trace
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/../../backtrace/src/backtrace/libunwind.rs:117:9
+   1: std::backtrace_rs::backtrace::trace_unsynchronized
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/../../backtrace/src/backtrace/mod.rs:66:14
+   2: std::backtrace::Backtrace::create
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/backtrace.rs:331:13
+   3: anyhow::error::<impl core::convert::From<E> for anyhow::Error>::from
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-1.0.100/src/backtrace.rs:27:14
+   4: <core::result::Result<T,F> as core::ops::try_trait::FromResidual<core::result::Result<core::convert::Infallible,E>>>::from_residual
+             at /Users/lowkey/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs:2079:27
+   5: i_miss_rust::database_ops::ingest_providers::ensure_platform::{{closure}}::{{closure}}
+             at ./src/database_ops/ingest_providers.rs:2461:19
+   6: <tracing::instrument::Instrumented<T> as core::future::future::Future>::poll
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.41/src/instrument.rs:321:15
+   7: i_miss_rust::database_ops::ingest_providers::ensure_platform::{{closure}}
+             at ./src/database_ops/ingest_providers.rs:2380:1
+   8: i_miss_rust::database_ops::playstation::prices::ingest_prices::{{closure}}
+             at ./src/database_ops/playstation/prices.rs:558:68
+   9: i_miss_rust::database_ops::playstation::prices::run_from_env::{{closure}}
+             at ./src/database_ops/playstation/prices.rs:437:94
+  10: i_miss_rust::cli::playstation::run_prices::{{closure}}
+             at ./src/cli/playstation.rs:70:28
+  11: gc::main::{{closure}}
+             at ./src/bin/gc.rs:637:42
+  12: <core::pin::Pin<P> as core::future::future::Future>::poll
+             at /Users/lowkey/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/future/future.rs:124:9
+  13: tokio::runtime::park::CachedParkThread::block_on::{{closure}}
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/park.rs:285:71
+  14: tokio::task::coop::with_budget
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/task/coop/mod.rs:167:5
+  15: tokio::task::coop::budget
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/task/coop/mod.rs:133:5
+  16: tokio::runtime::park::CachedParkThread::block_on
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/park.rs:285:31
+  17: tokio::runtime::context::blocking::BlockingRegionGuard::block_on
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/context/blocking.rs:66:14
+  18: tokio::runtime::scheduler::multi_thread::MultiThread::block_on::{{closure}}
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/scheduler/multi_thread/mod.rs:87:22
+  19: tokio::runtime::context::runtime::enter_runtime
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/context/runtime.rs:65:16
+  20: tokio::runtime::scheduler::multi_thread::MultiThread::block_on
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/scheduler/multi_thread/mod.rs:86:9
+  21: tokio::runtime::runtime::Runtime::block_on_inner
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/runtime.rs:370:50
+  22: tokio::runtime::runtime::Runtime::block_on
+             at /Users/lowkey/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.48.0/src/runtime/runtime.rs:340:18
+  23: gc::main
+             at ./src/bin/gc.rs:1431:7
+  24: core::ops::function::FnOnce::call_once
+             at /Users/lowkey/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+  25: std::sys::backtrace::__rust_begin_short_backtrace
+             at /Users/lowkey/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:152:18
+  26: std::rt::lang_start::{{closure}}
+             at /Users/lowkey/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:206:18
+  27: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/core/src/ops/function.rs:284:21
+  28: std::panicking::catch_unwind::do_call
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/panicking.rs:589:40
+  29: std::panicking::catch_unwind
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/panicking.rs:552:19
+  30: std::panic::catch_unwind
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/panic.rs:359:14
+  31: std::rt::lang_start_internal::{{closure}}
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/rt.rs:175:24
+  32: std::panicking::catch_unwind::do_call
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/panicking.rs:589:40
+  33: std::panicking::catch_unwind
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/panicking.rs:552:19
+  34: std::panic::catch_unwind
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/panic.rs:359:14
+  35: std::rt::lang_start_internal
+             at /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/std/src/rt.rs:171:5
+  36: std::rt::lang_start
+             at /Users/lowkey/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:205:5
+  37: _main

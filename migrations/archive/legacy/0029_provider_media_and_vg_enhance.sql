@@ -1,0 +1,5 @@
+-- LEGACY MIGRATION 0029_provider_media_and_vg_enhance.sql (no-op)
+-- Consolidated into squashed migrations:
+--   migrations_squashed/0340_video_games.sql
+--   migrations_squashed/0380_provider_media_links.sql
+-- This file is intentionally left as a no-op.

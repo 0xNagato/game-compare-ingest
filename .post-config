@@ -1,0 +1,28 @@
+{
+  "endpoints": [
+    {
+      "fileMatch": [
+        "*.json"
+      ],
+      "url": "http://127.0.0.1:9090/manager/enqueue/"
+    }
+  ],
+  "headers": {
+    "Connection": "Keep-Alive"
+  },
+  "body": {
+    "provider": "psstore_ingest",
+    "task": "sync",
+    "args": {
+      "region": "us"
+    },
+    "provider_id": null
+  },
+  "response": {
+    "folder": "response"
+  },
+  "variables": {
+    "{{var-1}}": "some value"
+  },
+  "additionalProperties": {}
+}

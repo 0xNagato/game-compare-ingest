@@ -1,0 +1,457 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "ps-prices-ingest",
+			"type": "shell",
+			"command": "PS_STORE_REGIONS=\"en-us\" PS_MAX_PAGES=1 PS_PAGE_SIZE=50 RUST_LOG=info cargo run --bin ps_prices_ingest",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=warn cargo run --bin db_counts",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=warn cargo run --bin db_counts",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=warn cargo run --bin db_counts",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=warn cargo run --bin db_counts",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts",
+			"isBackground": false
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts",
+			"isBackground": false
+		},
+		{
+			"label": "apply-0489",
+			"type": "shell",
+			"command": "MIG_FILE=migrations/0489_decouple_titles_products.sql cargo run --bin migrate_one",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "apply-0489-rerun",
+			"type": "shell",
+			"command": "MIG_FILE=migrations/0489_decouple_titles_products.sql cargo run --bin migrate_one",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "apply-0490",
+			"type": "shell",
+			"command": "MIG_FILE=migrations/0490_video_games_flat_view.sql cargo run --bin migrate_one",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "apply-0491",
+			"type": "shell",
+			"command": "MIG_FILE=migrations/0491_video_games_by_title_view.sql cargo run --bin migrate_one",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "run-import-sqlite",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin import_sqlite",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "run-import-sqlite-safe",
+			"type": "shell",
+			"command": "SQLITE_PERF=0 PROGRESS_INTERVAL=200 RUST_LOG=info cargo run --bin import_sqlite",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "copy-sqlite-and-import",
+			"type": "shell",
+			"command": "cp -f database.sqlite database.copy.sqlite && SQLITE_PERF=0 PROGRESS_INTERVAL=200 RUST_LOG=info cargo run --bin import_sqlite ./database.copy.sqlite",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "import-sqlite-providers",
+			"type": "shell",
+			"command": "SQLITE_PERF=0 PROGRESS_INTERVAL=200 RUST_LOG=info cargo run --bin import_sqlite ./database.copy.sqlite",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-importer",
+			"type": "shell",
+			"command": "cargo build -q --bin import_sqlite",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "import-sqlite-no-products",
+			"type": "shell",
+			"command": "cp -f database.sqlite database.copy.sqlite && SQLITE_PERF=0 PROGRESS_INTERVAL=200 RUST_LOG=info cargo run --bin import_sqlite ./database.copy.sqlite",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts",
+			"isBackground": false
+		},
+		{
+			"label": "build (cargo check)",
+			"type": "shell",
+			"command": "cargo check",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "cargo check verbose",
+			"type": "shell",
+			"command": "cargo check -v",
+			"isBackground": false,
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "cargo check import_sqlite",
+			"type": "shell",
+			"command": "cargo check --bin import_sqlite",
+			"isBackground": false,
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "cargo check --bin import_sqlite (retry)",
+			"type": "shell",
+			"command": "cargo check --bin import_sqlite",
+			"isBackground": false,
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check verbose",
+			"type": "shell",
+			"command": "cargo check -v",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check --bin import_sqlite (retry)",
+			"type": "shell",
+			"command": "cargo check --bin import_sqlite",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check --bin import_sqlite",
+			"type": "shell",
+			"command": "cargo check --bin import_sqlite",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check --bin import_sqlite",
+			"type": "shell",
+			"command": "cargo check --bin import_sqlite",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check --bin import_sqlite",
+			"type": "shell",
+			"command": "cargo check --bin import_sqlite",
+			"isBackground": false
+		},
+		{
+			"label": "db-counts",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin db_counts"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check verbose",
+			"type": "shell",
+			"command": "cargo check -v",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "cargo check verbose",
+			"type": "shell",
+			"command": "cargo check -v",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "build-copy-sqlite-media",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "rebuild",
+			"type": "shell",
+			"command": "cargo build -q",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "rebuild-copy",
+			"type": "shell",
+			"command": "cargo build --bin copy_sqlite_media",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "gc-ps-prices-enus",
+			"type": "shell",
+			"command": "RUST_LOG=info cargo run --bin gc -- ps-prices --regions en-us --page-size 50 --max-pages 1",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "cargo check (post-patch)",
+			"type": "shell",
+			"command": "cargo check",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "ps-prices-ipv6",
+			"type": "shell",
+			"command": "SUPABASE_IPV6_DB=\"postgresql://postgres:Osmgx7MGGEYMeyuQ@[2a05:d018:135e:160e:3efa:5995:753b:a4fb]:5432/postgres?sslmode=require\" PS_STORE_REGIONS=\"en-us\" PS_MAX_PAGES=1 PS_PAGE_SIZE=50 RUST_LOG=info cargo run --bin gc -- ps-prices --regions en-us --page-size 50 --max-pages 1"
+		},
+		{
+			"label": "psql-check-providers",
+			"type": "shell",
+			"command": "psql \"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05:d018:135e:160e:3efa:5995:753b:a4fb\" -c \"select count(*) from providers;\""
+		},
+		{
+			"label": "ps-prices-debug",
+			"type": "shell",
+			"command": "RUST_BACKTRACE=full SUPABASE_IPV6_DB=\"postgresql://postgres:Osmgx7MGGEYMeyuQ@[2a05:d018:135e:160e:3efa:5995:753b:a4fb]:5432/postgres?sslmode=require\" PS_STORE_REGIONS=\"en-us\" PS_MAX_PAGES=1 PS_PAGE_SIZE=50 RUST_LOG=debug cargo run --bin gc -- ps-prices --regions en-us --page-size 50 --max-pages 1",
+			"args": [],
+			"isBackground": false
+		},
+		{
+			"label": "ps-prices-debug2",
+			"type": "shell",
+			"command": "RUST_BACKTRACE=full SUPABASE_IPV6_DB=\"postgresql://postgres:Osmgx7MGGEYMeyuQ@[2a05:d018:135e:160e:3efa:5995:753b:a4fb]:5432/postgres?sslmode=require\" PS_STORE_REGIONS=\"en-us\" PS_MAX_PAGES=1 PS_PAGE_SIZE=50 RUST_LOG=debug cargo run --bin gc -- ps-prices --regions en-us --page-size 50 --max-pages 1 2>&1 | tee /tmp/ps-debug.log",
+			"isBackground": false
+		},
+		{
+			"label": "ps-prices-debug3",
+			"type": "shell",
+			"command": "RUST_BACKTRACE=full SUPABASE_IPV6_DB=\"postgresql://postgres:Osmgx7MGGEYMeyuQ@[2a05:d018:135e:160e:3efa:5995:753b:a4fb]:5432/postgres?sslmode=require\" PS_STORE_REGIONS=\"en-us\" PS_MAX_PAGES=1 PS_PAGE_SIZE=50 RUST_LOG=debug cargo run --bin gc -- ps-prices --regions en-us --page-size 50 --max-pages 1 2>&1 | tee ps-debug.log",
+			"isBackground": false
+		}
+	]
+}

@@ -1,0 +1,1038 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.81s
+     Running `target/debug/db_schema_audit`
+[schema_audit] starting
+[2m2025-11-15T15:48:04.100789Z[0m [33m WARN[0m using session pooler DB URL for schema audit
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_game_titles ===
+Columns (name:type:null):
+  id:bigint:not-null
+  product_id:bigint:not-null
+  title:text:not-null
+  normalized_title:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+  search_vector:tsvector:null
+Primary Key: video_game_titles_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_game_titles_product_id_key UNIQUE (product_id)
+Unique Indexes:
+  video_game_titles_pkey: CREATE UNIQUE INDEX video_game_titles_pkey ON public.video_game_titles USING btree (id)
+  video_game_titles_product_id_key: CREATE UNIQUE INDEX video_game_titles_product_id_key ON public.video_game_titles USING btree (product_id)
+Foreign Keys (outgoing):
+  video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_games: video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  sellables: sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  video_game_title_sources: video_game_title_sources_video_game_title_id_fkey FOREIGN KEY (video_game_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_game_titles ===
+Columns (name:type:null):
+  id:bigint:not-null
+  product_id:bigint:not-null
+  title:text:not-null
+  normalized_title:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+  search_vector:tsvector:null
+Primary Key: video_game_titles_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_game_titles_product_id_key UNIQUE (product_id)
+Unique Indexes:
+  video_game_titles_pkey: CREATE UNIQUE INDEX video_game_titles_pkey ON public.video_game_titles USING btree (id)
+  video_game_titles_product_id_key: CREATE UNIQUE INDEX video_game_titles_product_id_key ON public.video_game_titles USING btree (product_id)
+Foreign Keys (outgoing):
+  video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_games: video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  sellables: sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  video_game_title_sources: video_game_title_sources_video_game_title_id_fkey FOREIGN KEY (video_game_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_games ===
+Columns (name:type:null):
+  id:bigint:not-null
+  title_id:bigint:not-null
+  platform_id:bigint:not-null
+  edition:text:null
+  slug:USER-DEFINED:null
+  release_date:date:null
+  metadata:jsonb:null
+  average_rating:real:null
+  rating_count:bigint:null
+  rating_updated_at:timestamp with time zone:null
+  genres:ARRAY:null
+  display_title:text:null
+  developer:text:null
+  region_codes:ARRAY:null
+  popularity_score:numeric:not-null
+  rating:numeric:not-null
+  synopsis:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: video_games_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_games_slug_key UNIQUE (slug)
+Unique Indexes:
+  uq_video_games_title_platform_edition: CREATE UNIQUE INDEX uq_video_games_title_platform_edition ON public.video_games USING btree (title_id, platform_id, edition) WHERE (edition IS NOT NULL)
+  uq_video_games_title_platform_null: CREATE UNIQUE INDEX uq_video_games_title_platform_null ON public.video_games USING btree (title_id, platform_id) WHERE (edition IS NULL)
+  video_games_pkey: CREATE UNIQUE INDEX video_games_pkey ON public.video_games USING btree (id)
+  video_games_slug_key: CREATE UNIQUE INDEX video_games_slug_key ON public.video_games USING btree (slug)
+Foreign Keys (outgoing):
+  video_games_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES platforms(id)
+  video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_images: game_images_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  game_videos: game_videos_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  provider_media_links: provider_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE SET NULL
+  video_game_ratings_by_locale: video_game_ratings_by_locale_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_game_titles ===
+Columns (name:type:null):
+  id:bigint:not-null
+  product_id:bigint:not-null
+  title:text:not-null
+  normalized_title:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+  search_vector:tsvector:null
+Primary Key: video_game_titles_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_game_titles_product_id_key UNIQUE (product_id)
+Unique Indexes:
+  video_game_titles_pkey: CREATE UNIQUE INDEX video_game_titles_pkey ON public.video_game_titles USING btree (id)
+  video_game_titles_product_id_key: CREATE UNIQUE INDEX video_game_titles_product_id_key ON public.video_game_titles USING btree (product_id)
+Foreign Keys (outgoing):
+  video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_games: video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  sellables: sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  video_game_title_sources: video_game_title_sources_video_game_title_id_fkey FOREIGN KEY (video_game_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_games ===
+Columns (name:type:null):
+  id:bigint:not-null
+  title_id:bigint:not-null
+  platform_id:bigint:not-null
+  edition:text:null
+  slug:USER-DEFINED:null
+  release_date:date:null
+  metadata:jsonb:null
+  average_rating:real:null
+  rating_count:bigint:null
+  rating_updated_at:timestamp with time zone:null
+  genres:ARRAY:null
+  display_title:text:null
+  developer:text:null
+  region_codes:ARRAY:null
+  popularity_score:numeric:not-null
+  rating:numeric:not-null
+  synopsis:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: video_games_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_games_slug_key UNIQUE (slug)
+Unique Indexes:
+  uq_video_games_title_platform_edition: CREATE UNIQUE INDEX uq_video_games_title_platform_edition ON public.video_games USING btree (title_id, platform_id, edition) WHERE (edition IS NOT NULL)
+  uq_video_games_title_platform_null: CREATE UNIQUE INDEX uq_video_games_title_platform_null ON public.video_games USING btree (title_id, platform_id) WHERE (edition IS NULL)
+  video_games_pkey: CREATE UNIQUE INDEX video_games_pkey ON public.video_games USING btree (id)
+  video_games_slug_key: CREATE UNIQUE INDEX video_games_slug_key ON public.video_games USING btree (slug)
+Foreign Keys (outgoing):
+  video_games_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES platforms(id)
+  video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_images: game_images_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  game_videos: game_videos_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  provider_media_links: provider_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE SET NULL
+  video_game_ratings_by_locale: video_game_ratings_by_locale_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== sellables ===
+Columns (name:type:null):
+  id:bigint:not-null
+  kind:USER-DEFINED:not-null
+  software_title_id:bigint:null
+  console_id:bigint:null
+Primary Key: sellables_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  sellables_pkey: CREATE UNIQUE INDEX sellables_pkey ON public.sellables USING btree (id)
+  uq_sellables_console: CREATE UNIQUE INDEX uq_sellables_console ON public.sellables USING btree (console_id) WHERE (console_id IS NOT NULL)
+  uq_sellables_software_title: CREATE UNIQUE INDEX uq_sellables_software_title ON public.sellables USING btree (software_title_id) WHERE (software_title_id IS NOT NULL)
+Foreign Keys (outgoing):
+  sellables_console_id_fkey FOREIGN KEY (console_id) REFERENCES game_consoles(id) ON DELETE CASCADE
+  sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  offers: offers_sellable_id_fkey FOREIGN KEY (sellable_id) REFERENCES sellables(id) ON DELETE CASCADE
+Check Constraints:
+  sellables_check CHECK ((((kind = 'software'::sellable_kind) AND (software_title_id IS NOT NULL) AND (console_id IS NULL)) OR ((kind = 'hardware'::sellable_kind) AND (console_id IS NOT NULL) AND (software_title_id IS NULL))))
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_game_titles ===
+Columns (name:type:null):
+  id:bigint:not-null
+  product_id:bigint:not-null
+  title:text:not-null
+  normalized_title:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+  search_vector:tsvector:null
+Primary Key: video_game_titles_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_game_titles_product_id_key UNIQUE (product_id)
+Unique Indexes:
+  video_game_titles_pkey: CREATE UNIQUE INDEX video_game_titles_pkey ON public.video_game_titles USING btree (id)
+  video_game_titles_product_id_key: CREATE UNIQUE INDEX video_game_titles_product_id_key ON public.video_game_titles USING btree (product_id)
+Foreign Keys (outgoing):
+  video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_games: video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  sellables: sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  video_game_title_sources: video_game_title_sources_video_game_title_id_fkey FOREIGN KEY (video_game_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_games ===
+Columns (name:type:null):
+  id:bigint:not-null
+  title_id:bigint:not-null
+  platform_id:bigint:not-null
+  edition:text:null
+  slug:USER-DEFINED:null
+  release_date:date:null
+  metadata:jsonb:null
+  average_rating:real:null
+  rating_count:bigint:null
+  rating_updated_at:timestamp with time zone:null
+  genres:ARRAY:null
+  display_title:text:null
+  developer:text:null
+  region_codes:ARRAY:null
+  popularity_score:numeric:not-null
+  rating:numeric:not-null
+  synopsis:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: video_games_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_games_slug_key UNIQUE (slug)
+Unique Indexes:
+  uq_video_games_title_platform_edition: CREATE UNIQUE INDEX uq_video_games_title_platform_edition ON public.video_games USING btree (title_id, platform_id, edition) WHERE (edition IS NOT NULL)
+  uq_video_games_title_platform_null: CREATE UNIQUE INDEX uq_video_games_title_platform_null ON public.video_games USING btree (title_id, platform_id) WHERE (edition IS NULL)
+  video_games_pkey: CREATE UNIQUE INDEX video_games_pkey ON public.video_games USING btree (id)
+  video_games_slug_key: CREATE UNIQUE INDEX video_games_slug_key ON public.video_games USING btree (slug)
+Foreign Keys (outgoing):
+  video_games_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES platforms(id)
+  video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_images: game_images_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  game_videos: game_videos_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  provider_media_links: provider_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE SET NULL
+  video_game_ratings_by_locale: video_game_ratings_by_locale_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== sellables ===
+Columns (name:type:null):
+  id:bigint:not-null
+  kind:USER-DEFINED:not-null
+  software_title_id:bigint:null
+  console_id:bigint:null
+Primary Key: sellables_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  sellables_pkey: CREATE UNIQUE INDEX sellables_pkey ON public.sellables USING btree (id)
+  uq_sellables_console: CREATE UNIQUE INDEX uq_sellables_console ON public.sellables USING btree (console_id) WHERE (console_id IS NOT NULL)
+  uq_sellables_software_title: CREATE UNIQUE INDEX uq_sellables_software_title ON public.sellables USING btree (software_title_id) WHERE (software_title_id IS NOT NULL)
+Foreign Keys (outgoing):
+  sellables_console_id_fkey FOREIGN KEY (console_id) REFERENCES game_consoles(id) ON DELETE CASCADE
+  sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  offers: offers_sellable_id_fkey FOREIGN KEY (sellable_id) REFERENCES sellables(id) ON DELETE CASCADE
+Check Constraints:
+  sellables_check CHECK ((((kind = 'software'::sellable_kind) AND (software_title_id IS NOT NULL) AND (console_id IS NULL)) OR ((kind = 'hardware'::sellable_kind) AND (console_id IS NOT NULL) AND (software_title_id IS NULL))))
+
+=== providers ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:null
+  name:text:not-null
+  kind:text:null
+  api_source:text:null
+  created_at:timestamp with time zone:not-null
+  base_url:text:null
+  website_url:text:null
+  docs_url:text:null
+  auth_mode:text:null
+  auth_metadata:jsonb:not-null
+  is_active:boolean:not-null
+  rate_limit_per_minute:integer:null
+  rate_limit_burst:integer:null
+  metadata:jsonb:not-null
+  updated_at:timestamp with time zone:null
+  legacy_source_id:bigint:null
+Primary Key: providers_pkey PRIMARY KEY (id)
+Unique Constraints:
+  providers_slug_key UNIQUE (slug)
+Unique Indexes:
+  providers_pkey: CREATE UNIQUE INDEX providers_pkey ON public.providers USING btree (id)
+  providers_slug_key: CREATE UNIQUE INDEX providers_slug_key ON public.providers USING btree (slug)
+  uq_providers_legacy_source_id: CREATE UNIQUE INDEX uq_providers_legacy_source_id ON public.providers USING btree (legacy_source_id) WHERE (legacy_source_id IS NOT NULL)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  retailer_providers: retailer_providers_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_items: provider_items_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_ingest_runs: provider_ingest_runs_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_sync_states: provider_sync_states_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_game_titles ===
+Columns (name:type:null):
+  id:bigint:not-null
+  product_id:bigint:not-null
+  title:text:not-null
+  normalized_title:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+  search_vector:tsvector:null
+Primary Key: video_game_titles_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_game_titles_product_id_key UNIQUE (product_id)
+Unique Indexes:
+  video_game_titles_pkey: CREATE UNIQUE INDEX video_game_titles_pkey ON public.video_game_titles USING btree (id)
+  video_game_titles_product_id_key: CREATE UNIQUE INDEX video_game_titles_product_id_key ON public.video_game_titles USING btree (product_id)
+Foreign Keys (outgoing):
+  video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_games: video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  sellables: sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  video_game_title_sources: video_game_title_sources_video_game_title_id_fkey FOREIGN KEY (video_game_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_games ===
+Columns (name:type:null):
+  id:bigint:not-null
+  title_id:bigint:not-null
+  platform_id:bigint:not-null
+  edition:text:null
+  slug:USER-DEFINED:null
+  release_date:date:null
+  metadata:jsonb:null
+  average_rating:real:null
+  rating_count:bigint:null
+  rating_updated_at:timestamp with time zone:null
+  genres:ARRAY:null
+  display_title:text:null
+  developer:text:null
+  region_codes:ARRAY:null
+  popularity_score:numeric:not-null
+  rating:numeric:not-null
+  synopsis:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: video_games_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_games_slug_key UNIQUE (slug)
+Unique Indexes:
+  uq_video_games_title_platform_edition: CREATE UNIQUE INDEX uq_video_games_title_platform_edition ON public.video_games USING btree (title_id, platform_id, edition) WHERE (edition IS NOT NULL)
+  uq_video_games_title_platform_null: CREATE UNIQUE INDEX uq_video_games_title_platform_null ON public.video_games USING btree (title_id, platform_id) WHERE (edition IS NULL)
+  video_games_pkey: CREATE UNIQUE INDEX video_games_pkey ON public.video_games USING btree (id)
+  video_games_slug_key: CREATE UNIQUE INDEX video_games_slug_key ON public.video_games USING btree (slug)
+Foreign Keys (outgoing):
+  video_games_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES platforms(id)
+  video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_images: game_images_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  game_videos: game_videos_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  provider_media_links: provider_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE SET NULL
+  video_game_ratings_by_locale: video_game_ratings_by_locale_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== sellables ===
+Columns (name:type:null):
+  id:bigint:not-null
+  kind:USER-DEFINED:not-null
+  software_title_id:bigint:null
+  console_id:bigint:null
+Primary Key: sellables_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  sellables_pkey: CREATE UNIQUE INDEX sellables_pkey ON public.sellables USING btree (id)
+  uq_sellables_console: CREATE UNIQUE INDEX uq_sellables_console ON public.sellables USING btree (console_id) WHERE (console_id IS NOT NULL)
+  uq_sellables_software_title: CREATE UNIQUE INDEX uq_sellables_software_title ON public.sellables USING btree (software_title_id) WHERE (software_title_id IS NOT NULL)
+Foreign Keys (outgoing):
+  sellables_console_id_fkey FOREIGN KEY (console_id) REFERENCES game_consoles(id) ON DELETE CASCADE
+  sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  offers: offers_sellable_id_fkey FOREIGN KEY (sellable_id) REFERENCES sellables(id) ON DELETE CASCADE
+Check Constraints:
+  sellables_check CHECK ((((kind = 'software'::sellable_kind) AND (software_title_id IS NOT NULL) AND (console_id IS NULL)) OR ((kind = 'hardware'::sellable_kind) AND (console_id IS NOT NULL) AND (software_title_id IS NULL))))
+
+=== providers ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:null
+  name:text:not-null
+  kind:text:null
+  api_source:text:null
+  created_at:timestamp with time zone:not-null
+  base_url:text:null
+  website_url:text:null
+  docs_url:text:null
+  auth_mode:text:null
+  auth_metadata:jsonb:not-null
+  is_active:boolean:not-null
+  rate_limit_per_minute:integer:null
+  rate_limit_burst:integer:null
+  metadata:jsonb:not-null
+  updated_at:timestamp with time zone:null
+  legacy_source_id:bigint:null
+Primary Key: providers_pkey PRIMARY KEY (id)
+Unique Constraints:
+  providers_slug_key UNIQUE (slug)
+Unique Indexes:
+  providers_pkey: CREATE UNIQUE INDEX providers_pkey ON public.providers USING btree (id)
+  providers_slug_key: CREATE UNIQUE INDEX providers_slug_key ON public.providers USING btree (slug)
+  uq_providers_legacy_source_id: CREATE UNIQUE INDEX uq_providers_legacy_source_id ON public.providers USING btree (legacy_source_id) WHERE (legacy_source_id IS NOT NULL)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  retailer_providers: retailer_providers_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_items: provider_items_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_ingest_runs: provider_ingest_runs_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_sync_states: provider_sync_states_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== provider_items ===
+Columns (name:type:null):
+  id:bigint:not-null
+  provider_id:bigint:not-null
+  external_id:text:null
+  kind:text:null
+  metadata:jsonb:null
+  created_at:timestamp with time zone:not-null
+  external_sku:text:null
+  region_code:text:null
+  last_seen_at:timestamp with time zone:null
+  checksum:bytea:null
+  attributes:jsonb:not-null
+  locked_by:text:null
+  locked_at:timestamp with time zone:null
+  updated_at:timestamp with time zone:null
+Primary Key: provider_items_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  provider_items_pkey: CREATE UNIQUE INDEX provider_items_pkey ON public.provider_items USING btree (id)
+  uq_provider_items_provider_external: CREATE UNIQUE INDEX uq_provider_items_provider_external ON public.provider_items USING btree (provider_id, external_id)
+Foreign Keys (outgoing):
+  provider_items_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  provider_offers: provider_offers_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE CASCADE
+  prices: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2024_11: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2024_12: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_01: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_02: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_03: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_04: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_05: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_06: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_07: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_08: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_09: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_10: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_11: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_12: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_01: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_02: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_03: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_04: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_05: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  game_images: game_images_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  game_videos: game_videos_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  provider_media_links: provider_media_links_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+SCHEMA AUDIT (public) — total tables: 21
+
+=== products ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:not-null
+  name:text:not-null
+  category:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: products_pkey PRIMARY KEY (id)
+Unique Constraints:
+  products_slug_key UNIQUE (slug)
+Unique Indexes:
+  products_pkey: CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)
+  products_slug_key: CREATE UNIQUE INDEX products_slug_key ON public.products USING btree (slug)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  software: software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+  hardware: hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== software ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: software_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  software_pkey: CREATE UNIQUE INDEX software_pkey ON public.software USING btree (product_id)
+Foreign Keys (outgoing):
+  software_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_game_titles: video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== hardware ===
+Columns (name:type:null):
+  product_id:bigint:not-null
+Primary Key: hardware_pkey PRIMARY KEY (product_id)
+Unique Constraints: (none)
+Unique Indexes:
+  hardware_pkey: CREATE UNIQUE INDEX hardware_pkey ON public.hardware USING btree (product_id)
+Foreign Keys (outgoing):
+  hardware_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_consoles: game_consoles_product_id_fkey FOREIGN KEY (product_id) REFERENCES hardware(product_id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_game_titles ===
+Columns (name:type:null):
+  id:bigint:not-null
+  product_id:bigint:not-null
+  title:text:not-null
+  normalized_title:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+  search_vector:tsvector:null
+Primary Key: video_game_titles_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_game_titles_product_id_key UNIQUE (product_id)
+Unique Indexes:
+  video_game_titles_pkey: CREATE UNIQUE INDEX video_game_titles_pkey ON public.video_game_titles USING btree (id)
+  video_game_titles_product_id_key: CREATE UNIQUE INDEX video_game_titles_product_id_key ON public.video_game_titles USING btree (product_id)
+Foreign Keys (outgoing):
+  video_game_titles_product_id_fkey FOREIGN KEY (product_id) REFERENCES software(product_id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  video_games: video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  sellables: sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+  video_game_title_sources: video_game_title_sources_video_game_title_id_fkey FOREIGN KEY (video_game_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== video_games ===
+Columns (name:type:null):
+  id:bigint:not-null
+  title_id:bigint:not-null
+  platform_id:bigint:not-null
+  edition:text:null
+  slug:USER-DEFINED:null
+  release_date:date:null
+  metadata:jsonb:null
+  average_rating:real:null
+  rating_count:bigint:null
+  rating_updated_at:timestamp with time zone:null
+  genres:ARRAY:null
+  display_title:text:null
+  developer:text:null
+  region_codes:ARRAY:null
+  popularity_score:numeric:not-null
+  rating:numeric:not-null
+  synopsis:text:null
+  created_at:timestamp with time zone:not-null
+  updated_at:timestamp with time zone:not-null
+Primary Key: video_games_pkey PRIMARY KEY (id)
+Unique Constraints:
+  video_games_slug_key UNIQUE (slug)
+Unique Indexes:
+  uq_video_games_title_platform_edition: CREATE UNIQUE INDEX uq_video_games_title_platform_edition ON public.video_games USING btree (title_id, platform_id, edition) WHERE (edition IS NOT NULL)
+  uq_video_games_title_platform_null: CREATE UNIQUE INDEX uq_video_games_title_platform_null ON public.video_games USING btree (title_id, platform_id) WHERE (edition IS NULL)
+  video_games_pkey: CREATE UNIQUE INDEX video_games_pkey ON public.video_games USING btree (id)
+  video_games_slug_key: CREATE UNIQUE INDEX video_games_slug_key ON public.video_games USING btree (slug)
+Foreign Keys (outgoing):
+  video_games_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES platforms(id)
+  video_games_title_id_fkey FOREIGN KEY (title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  game_images: game_images_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  game_videos: game_videos_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+  provider_media_links: provider_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE SET NULL
+  video_game_ratings_by_locale: video_game_ratings_by_locale_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES video_games(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== sellables ===
+Columns (name:type:null):
+  id:bigint:not-null
+  kind:USER-DEFINED:not-null
+  software_title_id:bigint:null
+  console_id:bigint:null
+Primary Key: sellables_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  sellables_pkey: CREATE UNIQUE INDEX sellables_pkey ON public.sellables USING btree (id)
+  uq_sellables_console: CREATE UNIQUE INDEX uq_sellables_console ON public.sellables USING btree (console_id) WHERE (console_id IS NOT NULL)
+  uq_sellables_software_title: CREATE UNIQUE INDEX uq_sellables_software_title ON public.sellables USING btree (software_title_id) WHERE (software_title_id IS NOT NULL)
+Foreign Keys (outgoing):
+  sellables_console_id_fkey FOREIGN KEY (console_id) REFERENCES game_consoles(id) ON DELETE CASCADE
+  sellables_software_title_id_fkey FOREIGN KEY (software_title_id) REFERENCES video_game_titles(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  offers: offers_sellable_id_fkey FOREIGN KEY (sellable_id) REFERENCES sellables(id) ON DELETE CASCADE
+Check Constraints:
+  sellables_check CHECK ((((kind = 'software'::sellable_kind) AND (software_title_id IS NOT NULL) AND (console_id IS NULL)) OR ((kind = 'hardware'::sellable_kind) AND (console_id IS NOT NULL) AND (software_title_id IS NULL))))
+
+=== providers ===
+Columns (name:type:null):
+  id:bigint:not-null
+  slug:USER-DEFINED:null
+  name:text:not-null
+  kind:text:null
+  api_source:text:null
+  created_at:timestamp with time zone:not-null
+  base_url:text:null
+  website_url:text:null
+  docs_url:text:null
+  auth_mode:text:null
+  auth_metadata:jsonb:not-null
+  is_active:boolean:not-null
+  rate_limit_per_minute:integer:null
+  rate_limit_burst:integer:null
+  metadata:jsonb:not-null
+  updated_at:timestamp with time zone:null
+  legacy_source_id:bigint:null
+Primary Key: providers_pkey PRIMARY KEY (id)
+Unique Constraints:
+  providers_slug_key UNIQUE (slug)
+Unique Indexes:
+  providers_pkey: CREATE UNIQUE INDEX providers_pkey ON public.providers USING btree (id)
+  providers_slug_key: CREATE UNIQUE INDEX providers_slug_key ON public.providers USING btree (slug)
+  uq_providers_legacy_source_id: CREATE UNIQUE INDEX uq_providers_legacy_source_id ON public.providers USING btree (legacy_source_id) WHERE (legacy_source_id IS NOT NULL)
+Foreign Keys (outgoing): (none)
+Foreign Keys (incoming):
+  retailer_providers: retailer_providers_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_items: provider_items_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_ingest_runs: provider_ingest_runs_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+  provider_sync_states: provider_sync_states_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== provider_items ===
+Columns (name:type:null):
+  id:bigint:not-null
+  provider_id:bigint:not-null
+  external_id:text:null
+  kind:text:null
+  metadata:jsonb:null
+  created_at:timestamp with time zone:not-null
+  external_sku:text:null
+  region_code:text:null
+  last_seen_at:timestamp with time zone:null
+  checksum:bytea:null
+  attributes:jsonb:not-null
+  locked_by:text:null
+  locked_at:timestamp with time zone:null
+  updated_at:timestamp with time zone:null
+Primary Key: provider_items_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  provider_items_pkey: CREATE UNIQUE INDEX provider_items_pkey ON public.provider_items USING btree (id)
+  uq_provider_items_provider_external: CREATE UNIQUE INDEX uq_provider_items_provider_external ON public.provider_items USING btree (provider_id, external_id)
+Foreign Keys (outgoing):
+  provider_items_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE
+Foreign Keys (incoming):
+  provider_offers: provider_offers_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE CASCADE
+  prices: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2024_11: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2024_12: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_01: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_02: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_03: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_04: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_05: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_06: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_07: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_08: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_09: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_10: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_11: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2025_12: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_01: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_02: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_03: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_04: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  prices_2026_05: prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  game_images: game_images_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  game_videos: game_videos_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE SET NULL
+  provider_media_links: provider_media_links_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE CASCADE
+Check Constraints: (none)
+
+=== provider_offers ===
+Columns (name:type:null):
+  id:bigint:not-null
+  provider_item_id:bigint:not-null
+  offer_id:bigint:null
+  metadata:jsonb:null
+  created_at:timestamp with time zone:not-null
+  confidence:numeric:null
+  strategy:text:null
+  last_matched_at:timestamp with time zone:null
+  is_active:boolean:not-null
+  notes:text:null
+  locked_by:text:null
+  locked_at:timestamp with time zone:null
+Primary Key: provider_offers_pkey PRIMARY KEY (id)
+Unique Constraints: (none)
+Unique Indexes:
+  provider_offers_pkey: CREATE UNIQUE INDEX provider_offers_pkey ON public.provider_offers USING btree (id)
+  uq_provider_offers_item_offer: CREATE UNIQUE INDEX uq_provider_offers_item_offer ON public.provider_offers USING btree (provider_item_id, offer_id)
+Foreign Keys (outgoing):
+  provider_offers_offer_id_fkey FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE SET NULL
+  provider_offers_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES provider_items(id) ON DELETE CASCADE
+Foreign Keys (incoming): (none)
+Check Constraints:
+  provider_offers_confidence_check CHECK (((confidence IS NULL) OR ((confidence >= (0)::numeric) AND (confidence <= (1)::numeric))))
+

@@ -1,0 +1,4 @@
+-- 0494_media_staging_tables.sql
+-- Deprecated: legacy media staging tables have been removed. This migration now
+-- intentionally performs no work to preserve migration numbering for existing
+-- environments.
