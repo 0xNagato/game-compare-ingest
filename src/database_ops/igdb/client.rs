@@ -1,20 +1,30 @@
 use crate::database_ops::db::Db;
 use crate::database_ops::ingest_providers::{
-    ProviderEntityCache, ensure_platform, ensure_provider, ensure_provider_media_links_with_meta,
-    ingest_run_finish, ingest_run_start, upsert_game_media,
+    ensure_platform, ensure_provider, ensure_vg_source_media_links_with_meta,
+    ensure_video_game_source, ingest_run_finish, ingest_run_start, replace_provider_toplist_items,
+    upsert_game_media, upsert_provider_toplist, ProviderEntityCache,
 };
 use crate::database_ops::media_map::normalize_title;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use chrono::{Datelike, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use reqwest::{Client, StatusCode};
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::{Value, json};
+use serde::Deserialize;
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
+
+#[derive(Debug, Clone, Copy)]
+struct TitleSchemaFlags {
+    keyed_by_source_item: bool,
+    has_video_game_id: bool,
+    has_product_id: bool,
+    video_games_is_laravel: bool,
+    source_id: Option<i64>,
+}
 
 #[derive(Debug, Clone)]
 pub struct IgdbServiceConfig {
@@ -153,6 +163,8 @@ impl IgdbServiceConfig {
 const TWITCH_TOKEN_URL: &str = "https://id.twitch.tv/oauth2/token";
 const IGDB_GAMES_ENDPOINT: &str = "https://api.igdb.com/v4/games";
 const IGDB_CHARACTERS_ENDPOINT: &str = "https://api.igdb.com/v4/characters";
+const IGDB_GENRES_ENDPOINT: &str = "https://api.igdb.com/v4/genres";
+const IGDB_THEMES_ENDPOINT: &str = "https://api.igdb.com/v4/themes";
 const IGDB_IMAGE_BASE: &str = "https://images.igdb.com/igdb/image/upload";
 const IGDB_COVER_SIZES: &[&str] = &[
     "t_cover_small",
@@ -167,8 +179,8 @@ const IGDB_SCREENSHOT_SIZES: &[&str] = &[
     "t_original",
 ];
 const IGDB_MAX_LIMIT: usize = 500;
-const IGDB_CHARACTER_BATCH: usize = 500;
-const IGDB_MAX_SCREENSHOTS: usize = 6;
+const IGDB_CHARACTER_BATCH: usize = 3;
+const IGDB_MAX_SCREENSHOTS: usize = 3;
 const IGDB_PROVIDER_NAME: &str = "IGDB";
 const IGDB_PROVIDER_KIND: &str = "catalog";
 const IGDB_PROVIDER_SLUG: &str = "igdb";
@@ -214,6 +226,26 @@ struct IgdbReleaseDate {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct IgdbGenre {
+    #[serde(default)]
+    id: Option<i64>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct IgdbTheme {
+    #[serde(default)]
+    id: Option<i64>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct IgdbGame {
     #[serde(default)]
     id: Option<i64>,
@@ -228,7 +260,17 @@ struct IgdbGame {
     #[serde(default)]
     first_release_date: Option<i64>,
     #[serde(default)]
+    total_rating: Option<f32>,
+    #[serde(default)]
+    total_rating_count: Option<i64>,
+    #[serde(default)]
+    aggregated_rating: Option<f32>,
+    #[serde(default)]
+    aggregated_rating_count: Option<i64>,
+    #[serde(default)]
     genres: Option<Vec<i64>>,
+    #[serde(default)]
+    themes: Option<Vec<i64>>,
     #[serde(default)]
     platforms: Option<Vec<IgdbPlatform>>,
     #[serde(default)]
@@ -241,6 +283,14 @@ struct IgdbGame {
     release_dates: Option<Vec<IgdbReleaseDate>>,
     #[serde(default)]
     characters: Option<Vec<i64>>,
+}
+
+#[derive(Debug, Clone)]
+struct GenreAttachContext {
+    enabled: bool,
+    igdb_genre_id_to_local_genre_id: HashMap<i64, i64>,
+    igdb_theme_id_to_local_genre_id: HashMap<i64, i64>,
+    game_genre_has_timestamps: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -337,10 +387,10 @@ impl IgdbService {
     }
 
     async fn request_new_token(&self) -> Result<IgdbToken> {
-        let client_id =
-            std::env::var("TWITCH_CLIENT_ID").context("TWITCH_CLIENT_ID missing for IGDB")?;
+        let client_id = std::env::var("TWITCH_CLIENT_ID")
+            .context("missing env: TWITCH_CLIENT_ID (required for IGDB)")?;
         let client_secret = std::env::var("TWITCH_CLIENT_SECRET")
-            .context("TWITCH_CLIENT_SECRET missing for IGDB")?;
+            .context("missing env: TWITCH_CLIENT_SECRET (required for IGDB)")?;
         let response = self
             .http
             .post(TWITCH_TOKEN_URL)
@@ -373,8 +423,8 @@ impl IgdbService {
     where
         T: DeserializeOwned,
     {
-        let client_id =
-            std::env::var("TWITCH_CLIENT_ID").context("TWITCH_CLIENT_ID missing for IGDB")?;
+        let client_id = std::env::var("TWITCH_CLIENT_ID")
+            .context("missing env: TWITCH_CLIENT_ID (required for IGDB)")?;
         let mut attempt = 0u32;
         loop {
             let token = self.ensure_token().await?;
@@ -438,6 +488,24 @@ impl IgdbService {
     async fn fetch_games(&self, body: &str) -> Result<Vec<IgdbGame>> {
         self.execute_request(IGDB_GAMES_ENDPOINT, body.to_string())
             .await
+    }
+
+    async fn fetch_genres(&self, body: &str) -> Result<Vec<IgdbGenre>> {
+        self.execute_request(IGDB_GENRES_ENDPOINT, body.to_string())
+            .await
+    }
+
+    async fn fetch_all_genres(&self) -> Result<Vec<IgdbGenre>> {
+        self.fetch_genres("fields id,name,slug; limit 500;").await
+    }
+
+    async fn fetch_themes(&self, body: &str) -> Result<Vec<IgdbTheme>> {
+        self.execute_request(IGDB_THEMES_ENDPOINT, body.to_string())
+            .await
+    }
+
+    async fn fetch_all_themes(&self) -> Result<Vec<IgdbTheme>> {
+        self.fetch_themes("fields id,name,slug; limit 500;").await
     }
 
     async fn fetch_characters_for_games(
@@ -508,19 +576,33 @@ impl IgdbService {
         cache: &mut ProviderEntityCache,
         games: &[IgdbGame],
         characters: &HashMap<i64, Vec<CharacterSummary>>,
-    ) -> Result<usize> {
-        let mut processed = 0usize;
+        provider_items_exists: bool,
+        provider_media_links_exists: bool,
+        title_schema: TitleSchemaFlags,
+        genre_attach: Option<&GenreAttachContext>,
+    ) -> Result<Vec<i64>> {
+        let mut product_ids: Vec<i64> = Vec::new();
         for game in games {
             if let Some(id) = game.id {
-                if self
-                    .persist_single_game(db, provider_id, cache, game, characters.get(&id))
+                if let Some(product_id) = self
+                    .persist_single_game(
+                        db,
+                        provider_id,
+                        cache,
+                        game,
+                        characters.get(&id),
+                        provider_items_exists,
+                        provider_media_links_exists,
+                        title_schema,
+                        genre_attach,
+                    )
                     .await?
                 {
-                    processed += 1;
+                    product_ids.push(product_id);
                 }
             }
         }
-        Ok(processed)
+        Ok(product_ids)
     }
 
     async fn persist_single_game(
@@ -530,11 +612,15 @@ impl IgdbService {
         cache: &mut ProviderEntityCache,
         game: &IgdbGame,
         characters: Option<&Vec<CharacterSummary>>,
-    ) -> Result<bool> {
+        provider_items_exists: bool,
+        provider_media_links_exists: bool,
+        title_schema: TitleSchemaFlags,
+        genre_attach: Option<&GenreAttachContext>,
+    ) -> Result<Option<i64>> {
         let igdb_id = match game.id {
             Some(id) => id,
             None => {
-                return Ok(false);
+                return Ok(None);
             }
         };
         let name = game.name.as_deref().unwrap_or("Untitled IGDB Game");
@@ -547,30 +633,157 @@ impl IgdbService {
             .ensure_product_named("software", &product_slug, name)
             .await?;
         cache.ensure_software_row(product_id).await?;
-        let title_id = cache
-            .ensure_video_game_title(product_id, name, Some(&slug))
-            .await?;
+
+        if let Some(ctx) = genre_attach {
+            if ctx.enabled {
+                let mut local_ids: Vec<i64> = Vec::new();
+                if let Some(game_genres) = game.genres.as_ref() {
+                    local_ids.extend(game_genres.iter().filter_map(|igdb_genre_id| {
+                        ctx.igdb_genre_id_to_local_genre_id
+                            .get(igdb_genre_id)
+                            .copied()
+                    }));
+                }
+                if let Some(game_themes) = game.themes.as_ref() {
+                    local_ids.extend(game_themes.iter().filter_map(|igdb_theme_id| {
+                        ctx.igdb_theme_id_to_local_genre_id
+                            .get(igdb_theme_id)
+                            .copied()
+                    }));
+                }
+
+                local_ids.sort_unstable();
+                local_ids.dedup();
+                for genre_id in local_ids {
+                    if let Err(err) = attach_genre_to_product(
+                        db,
+                        product_id,
+                        genre_id,
+                        ctx.game_genre_has_timestamps,
+                    )
+                    .await
+                    {
+                        warn!(
+                            target = "igdb",
+                            product_id,
+                            genre_id,
+                            error = %err,
+                            "failed to attach genre to product (best-effort)"
+                        );
+                    }
+                }
+            }
+        }
         let metadata = self.build_provider_metadata(game, characters);
-        let provider_item_id = cache
-            .ensure_provider_item(
-                provider_id,
-                &igdb_id.to_string(),
-                Some(metadata.clone()),
-                true,
+
+        // Some DBs use a source-registry schema where `video_game_titles` is keyed by
+        // (video_game_source_id, video_game_source_id), and may require video_game_id or product_id.
+        let (_title_id, title_video_game_id) = if title_schema.keyed_by_source_item {
+            let sid = title_schema
+                .source_id
+                .expect("source_id must exist when titles are keyed by source item");
+            let provider_item_key = igdb_id.to_string();
+            if title_schema.has_video_game_id {
+                if !title_schema.video_games_is_laravel {
+                    anyhow::bail!(
+                        "video_game_titles.video_game_id is present but video_games is not Laravel-style (missing product_id/title)"
+                    );
+                }
+                let canonical_vg_id = cache
+                    .ensure_video_game_for_product_laravel(
+                        product_id,
+                        name,
+                        Some(&slug),
+                        Some(metadata.clone()),
+                        IGDB_PROVIDER_SLUG,
+                    )
+                    .await?;
+                let title_id = cache
+                    .ensure_video_game_title_for_source_item(
+                        sid,
+                        &provider_item_key,
+                        Some(product_id),
+                        Some(canonical_vg_id),
+                        name,
+                        Some(&slug),
+                        None,
+                        Some(metadata.clone()),
+                    )
+                    .await?;
+                (title_id, Some(canonical_vg_id))
+            } else {
+                let legacy_link_id = if title_schema.has_product_id {
+                    Some(product_id)
+                } else {
+                    None
+                };
+                let title_id = cache
+                    .ensure_video_game_title_for_source_item(
+                        sid,
+                        &provider_item_key,
+                        legacy_link_id,
+                        None,
+                        name,
+                        Some(&slug),
+                        None,
+                        Some(metadata.clone()),
+                    )
+                    .await?;
+                (title_id, None)
+            }
+        } else {
+            let title_id = cache
+                .ensure_video_game_title(product_id, name, Some(&slug))
+                .await?;
+            (title_id, None)
+        };
+
+        let video_game_source_id = if provider_items_exists {
+            Some(
+                cache
+                    .ensure_provider_item(
+                        provider_id,
+                        &igdb_id.to_string(),
+                        Some(metadata.clone()),
+                        true,
+                    )
+                    .await?,
             )
-            .await?;
+        } else {
+            None
+        };
         let platforms = self.extract_platforms(game);
         if platforms.is_empty() {
-            let platform_id = ensure_platform(
+            let _platform_id = ensure_platform(
                 db,
                 IGDB_FALLBACK_PLATFORM_NAME,
                 Some(IGDB_FALLBACK_PLATFORM_SLUG),
             )
             .await?;
-            let video_game_id = cache.ensure_video_game(title_id, platform_id, None).await?;
-            self.persist_media_records(db, provider_item_id, video_game_id, igdb_id, game)
-                .await?;
-            return Ok(true);
+            // Laravel schema: use product_id directly
+            let video_game_id = if let Some(vg_id) = title_video_game_id {
+                vg_id
+            } else {
+                cache
+                    .ensure_video_game_for_product_laravel(
+                        product_id,
+                        name,
+                        Some(&slug),
+                            Some(metadata.clone()),
+                            IGDB_PROVIDER_SLUG,
+                    )
+                    .await?
+            };
+            self.persist_media_records(
+                db,
+                video_game_source_id,
+                provider_media_links_exists,
+                video_game_id,
+                igdb_id,
+                game,
+            )
+            .await?;
+            return Ok(Some(product_id));
         }
         for platform in platforms {
             let platform_name = platform
@@ -582,18 +795,39 @@ impl IgdbService {
                 .as_deref()
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| normalize_title(platform_name));
-            let platform_id = ensure_platform(db, platform_name, Some(&platform_slug)).await?;
-            let video_game_id = cache.ensure_video_game(title_id, platform_id, None).await?;
-            self.persist_media_records(db, provider_item_id, video_game_id, igdb_id, game)
-                .await?;
+            let _platform_id = ensure_platform(db, platform_name, Some(&platform_slug)).await?;
+            // Laravel schema: use product_id directly
+            let video_game_id = if let Some(vg_id) = title_video_game_id {
+                vg_id
+            } else {
+                cache
+                    .ensure_video_game_for_product_laravel(
+                        product_id,
+                        name,
+                        Some(&slug),
+                        Some(metadata.clone()),
+                        IGDB_PROVIDER_SLUG,
+                    )
+                    .await?
+            };
+            self.persist_media_records(
+                db,
+                video_game_source_id,
+                provider_media_links_exists,
+                video_game_id,
+                igdb_id,
+                game,
+            )
+            .await?;
         }
-        Ok(true)
+        Ok(Some(product_id))
     }
 
     async fn persist_media_records(
         &self,
         db: &Db,
-        provider_item_id: i64,
+        video_game_source_id: Option<i64>,
+        provider_media_links_exists: bool,
         video_game_id: i64,
         igdb_id: i64,
         game: &IgdbGame,
@@ -612,15 +846,19 @@ impl IgdbService {
                         )
                     })
                     .collect();
-                ensure_provider_media_links_with_meta(
-                    db,
-                    provider_item_id,
-                    Some(video_game_id),
-                    &provider_entries,
-                    IGDB_PROVIDER_SLUG,
-                    None,
-                )
-                .await?;
+                if provider_media_links_exists {
+                    if let Some(video_game_source_id) = video_game_source_id {
+                        ensure_vg_source_media_links_with_meta(
+                            db,
+                            video_game_source_id,
+                            Some(video_game_id),
+                            &provider_entries,
+                            IGDB_PROVIDER_SLUG,
+                            None,
+                        )
+                        .await?;
+                    }
+                }
                 for (url, size) in variants {
                     let meta = json!({
                         "asset": "cover",
@@ -658,15 +896,19 @@ impl IgdbService {
                         )
                     })
                     .collect();
-                ensure_provider_media_links_with_meta(
-                    db,
-                    provider_item_id,
-                    Some(video_game_id),
-                    &provider_entries,
-                    IGDB_PROVIDER_SLUG,
-                    None,
-                )
-                .await?;
+                if provider_media_links_exists {
+                    if let Some(video_game_source_id) = video_game_source_id {
+                        ensure_vg_source_media_links_with_meta(
+                            db,
+                            video_game_source_id,
+                            Some(video_game_id),
+                            &provider_entries,
+                            IGDB_PROVIDER_SLUG,
+                            None,
+                        )
+                        .await?;
+                    }
+                }
                 for (url, size) in variants {
                     let meta = json!({
                         "asset": "screenshot",
@@ -706,15 +948,19 @@ impl IgdbService {
                             )
                         })
                         .collect();
-                    ensure_provider_media_links_with_meta(
-                        db,
-                        provider_item_id,
-                        Some(video_game_id),
-                        &provider_entries,
-                        IGDB_PROVIDER_SLUG,
-                        None,
-                    )
-                    .await?;
+                    if provider_media_links_exists {
+                        if let Some(video_game_source_id) = video_game_source_id {
+                            ensure_vg_source_media_links_with_meta(
+                                db,
+                                video_game_source_id,
+                                Some(video_game_id),
+                                &provider_entries,
+                                IGDB_PROVIDER_SLUG,
+                                None,
+                            )
+                            .await?;
+                        }
+                    }
                     for (url, variant, quality) in variants {
                         let meta = json!({
                             "asset": "video",
@@ -792,7 +1038,12 @@ impl IgdbService {
                 "summary": game.summary,
                 "storyline": game.storyline,
                 "first_release_date": game.first_release_date,
+                "total_rating": game.total_rating,
+                "total_rating_count": game.total_rating_count,
+                "aggregated_rating": game.aggregated_rating,
+                "aggregated_rating_count": game.aggregated_rating_count,
                 "genres": game.genres,
+                "themes": game.themes,
                 "platforms": platforms,
                 "release_dates": release_dates,
                 "characters": character_values,
@@ -837,7 +1088,56 @@ impl IgdbService {
             format!("where {};", filters.join(" & "))
         };
         format!(
-            "fields id,name,slug,summary,storyline,first_release_date,genres,platforms.id,platforms.name,platforms.slug,cover.image_id,cover.url,screenshots.image_id,screenshots.url,videos.video_id,videos.name,release_dates.id,release_dates.date,release_dates.platform,release_dates.region; {where_clause} sort first_release_date desc; limit {limit}; offset {offset};",
+            "fields id,name,slug,summary,storyline,first_release_date,total_rating,total_rating_count,aggregated_rating,aggregated_rating_count,genres,themes,platforms.id,platforms.name,platforms.slug,cover.image_id,cover.url,screenshots.image_id,screenshots.url,videos.video_id,videos.name,release_dates.id,release_dates.date,release_dates.platform,release_dates.region; {where_clause} sort first_release_date desc; limit {limit}; offset {offset};",
+            limit = limit.min(IGDB_MAX_LIMIT),
+            offset = offset
+        )
+    }
+
+    fn build_top_monthly_games_query(
+        &self,
+        start_epoch: i64,
+        end_epoch: i64,
+        allowed_genre_ids: &[i64],
+        allowed_theme_ids: &[i64],
+        offset: usize,
+        limit: usize,
+    ) -> String {
+        let mut filters: Vec<String> = vec![
+            format!("first_release_date >= {}", start_epoch),
+            format!("first_release_date <= {}", end_epoch),
+        ];
+
+        let mut tag_clauses: Vec<String> = Vec::new();
+        if !allowed_genre_ids.is_empty() {
+            let ids = allowed_genre_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            tag_clauses.push(format!("genres = ({})", ids));
+        }
+        if !allowed_theme_ids.is_empty() {
+            let ids = allowed_theme_ids
+                .iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            tag_clauses.push(format!("themes = ({})", ids));
+        }
+        if !tag_clauses.is_empty() {
+            if tag_clauses.len() == 1 {
+                filters.push(tag_clauses[0].clone());
+            } else {
+                filters.push(format!("({})", tag_clauses.join(" | ")));
+            }
+        }
+
+        let where_clause = format!("where {};", filters.join(" & "));
+
+        // Sort by engagement first (count), then by rating.
+        format!(
+            "fields id,name,slug,summary,storyline,first_release_date,total_rating,total_rating_count,aggregated_rating,aggregated_rating_count,genres,themes,platforms.id,platforms.name,platforms.slug,cover.image_id,cover.url,screenshots.image_id,screenshots.url,videos.video_id,videos.name,release_dates.id,release_dates.date,release_dates.platform,release_dates.region; {where_clause} sort total_rating_count desc; limit {limit}; offset {offset};",
             limit = limit.min(IGDB_MAX_LIMIT),
             offset = offset
         )
@@ -938,6 +1238,9 @@ impl IgdbService {
         year_to: i32,
         limit: usize,
         max_pages: usize,
+        provider_items_exists: bool,
+        provider_media_links_exists: bool,
+        title_schema: TitleSchemaFlags,
     ) -> Result<usize> {
         let (start_epoch, end_epoch) = self.resolve_release_bounds(Some(year_from), Some(year_to));
         let mut cache = ProviderEntityCache::new(db.clone());
@@ -954,9 +1257,21 @@ impl IgdbService {
                 break;
             }
             let characters = self.fetch_characters_for_games(&games).await?;
-            let processed = self
-                .persist_games(db, provider_id, &mut cache, &games, &characters)
+            let processed_product_ids = self
+                .persist_games(
+                    db,
+                    provider_id,
+                    &mut cache,
+                    &games,
+                    &characters,
+                    provider_items_exists,
+                    provider_media_links_exists,
+                    title_schema,
+                    None,
+                )
                 .await?;
+
+            let processed = processed_product_ids.len();
             total += processed;
             page += 1;
             offset += limit;
@@ -982,6 +1297,23 @@ impl IgdbService {
         page_size_override: usize,
         max_pages_override: usize,
     ) -> Result<usize> {
+        let provider_items_exists = table_exists(db, "provider_items").await.unwrap_or(false);
+        let provider_media_links_exists = table_exists(db, "vg_source_media_links")
+            .await
+            .unwrap_or(false);
+        if !provider_items_exists {
+            tracing::warn!(
+                target = "igdb",
+                "provider_items table missing; skipping provider_items writes (legacy DB compat)"
+            );
+        }
+        if !provider_media_links_exists {
+            tracing::warn!(
+                target = "igdb",
+                "provider_media_links table missing; skipping provider_media_links writes (legacy DB compat)"
+            );
+        }
+
         let provider_id = ensure_provider(
             db,
             IGDB_PROVIDER_NAME,
@@ -989,6 +1321,9 @@ impl IgdbService {
             Some(IGDB_PROVIDER_SLUG),
         )
         .await?;
+
+        let title_schema = detect_title_schema(db).await?;
+
         let platform_filter = if !platforms.is_empty() {
             platforms.to_vec()
         } else if !self.cfg.platform_ids.is_empty() {
@@ -1006,6 +1341,16 @@ impl IgdbService {
         let ingest_id = ingest_run_start(db, provider_id, None, Some(meta)).await?;
         let limit = self.effective_page_size(page_size_override);
         let max_pages = self.effective_max_pages(max_pages_override);
+
+        info!(
+            target = "igdb",
+            page_size_override,
+            max_pages_override,
+            effective_page_size = limit,
+            effective_max_pages = max_pages,
+            "IGDB paging controls"
+        );
+
         let result = self
             .backfill_range_inner(
                 db,
@@ -1015,6 +1360,9 @@ impl IgdbService {
                 to_year,
                 limit,
                 max_pages,
+                provider_items_exists,
+                provider_media_links_exists,
+                title_schema,
             )
             .await;
         match &result {
@@ -1033,25 +1381,860 @@ impl IgdbService {
                 .await?;
             }
         }
-        log_provider_snapshot(db, provider_id).await?;
+        log_provider_snapshot(
+            db,
+            provider_id,
+            provider_items_exists,
+            provider_media_links_exists,
+        )
+        .await?;
         result
+    }
+
+    #[instrument(skip(self, db))]
+    pub async fn ingest_top_monthly_from_env(&self, db: &Db) -> Result<usize> {
+        let limit = std::env::var("IGDB_TOP_MONTHLY_LIMIT")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(50)
+            .clamp(1, IGDB_MAX_LIMIT);
+
+        let month_spec = std::env::var("IGDB_TOP_MONTHLY_MONTH").ok();
+        let (month_start, month_end) = resolve_month_bounds(month_spec.as_deref())?;
+
+        let genre_tokens = std::env::var("IGDB_TOP_MONTHLY_GENRES")
+            .ok()
+            .map(|raw| split_csv_tokens(&raw))
+            .filter(|tokens| !tokens.is_empty())
+            .unwrap_or_else(default_top_monthly_genre_tokens);
+
+        self.ingest_top_monthly(db, month_start, month_end, limit, genre_tokens)
+            .await
+    }
+
+    async fn ingest_top_monthly(
+        &self,
+        db: &Db,
+        month_start: NaiveDate,
+        month_end: NaiveDate,
+        limit: usize,
+        genre_tokens: Vec<String>,
+    ) -> Result<usize> {
+        let provider_items_exists = table_exists(db, "provider_items").await.unwrap_or(false);
+        let provider_media_links_exists = table_exists(db, "vg_source_media_links")
+            .await
+            .unwrap_or(false);
+
+        if !provider_items_exists {
+            tracing::warn!(
+                target = "igdb",
+                "provider_items table missing; skipping provider_items writes (legacy DB compat)"
+            );
+        }
+        if !provider_media_links_exists {
+            tracing::warn!(
+                target = "igdb",
+                "provider_media_links table missing; skipping provider_media_links writes (legacy DB compat)"
+            );
+        }
+
+        let provider_id = ensure_provider(
+            db,
+            IGDB_PROVIDER_NAME,
+            IGDB_PROVIDER_KIND,
+            Some(IGDB_PROVIDER_SLUG),
+        )
+        .await?;
+
+        let title_schema = detect_title_schema(db).await?;
+
+        let genres = self.fetch_all_genres().await?;
+        let genre_slug_to_id: HashMap<String, i64> = genres
+            .into_iter()
+            .filter_map(|g| {
+                let id = g.id?;
+                let slug = g.slug.or(g.name).unwrap_or_default();
+                if slug.trim().is_empty() {
+                    None
+                } else {
+                    Some((slug.to_ascii_lowercase(), id))
+                }
+            })
+            .collect();
+
+        let themes = self.fetch_all_themes().await?;
+        let theme_slug_to_id: HashMap<String, i64> = themes
+            .into_iter()
+            .filter_map(|t| {
+                let id = t.id?;
+                let slug = t.slug.or(t.name).unwrap_or_default();
+                if slug.trim().is_empty() {
+                    None
+                } else {
+                    Some((slug.to_ascii_lowercase(), id))
+                }
+            })
+            .collect();
+
+        let desired = build_desired_tags(&genre_tokens);
+        let mut allowed_genre_ids: Vec<i64> = Vec::new();
+        let mut allowed_theme_ids: Vec<i64> = Vec::new();
+        let mut igdb_genre_to_local: HashMap<i64, (String, String, String)> = HashMap::new();
+        let mut igdb_theme_to_local: HashMap<i64, (String, String, String)> = HashMap::new();
+        for d in desired {
+            match d.kind {
+                IgdbTagKind::Genre => {
+                    if let Some(igdb_id) = genre_slug_to_id.get(&d.igdb_slug).copied() {
+                        allowed_genre_ids.push(igdb_id);
+                        igdb_genre_to_local.insert(
+                            igdb_id,
+                            (
+                                d.local_slug.clone(),
+                                d.igdb_slug.clone(),
+                                d.display_name.clone(),
+                            ),
+                        );
+                    } else if let Some(igdb_id) = theme_slug_to_id.get(&d.igdb_slug).copied() {
+                        // IGDB taxonomy drift: some “genre-like” tags are actually themes.
+                        // If the slug exists as a theme, treat it as such and avoid noisy warnings.
+                        debug!(
+                            target = "igdb",
+                            igdb_slug = %d.igdb_slug,
+                            "IGDB slug not found in genres; resolved as theme"
+                        );
+                        allowed_theme_ids.push(igdb_id);
+                        igdb_theme_to_local.insert(
+                            igdb_id,
+                            (
+                                d.local_slug.clone(),
+                                d.igdb_slug.clone(),
+                                d.display_name.clone(),
+                            ),
+                        );
+                    } else {
+                        warn!(
+                            target = "igdb",
+                            igdb_slug = %d.igdb_slug,
+                            "IGDB genre slug not found; skipping"
+                        );
+                    }
+                }
+                IgdbTagKind::Theme => {
+                    if let Some(igdb_id) = theme_slug_to_id.get(&d.igdb_slug).copied() {
+                        allowed_theme_ids.push(igdb_id);
+                        igdb_theme_to_local.insert(
+                            igdb_id,
+                            (
+                                d.local_slug.clone(),
+                                d.igdb_slug.clone(),
+                                d.display_name.clone(),
+                            ),
+                        );
+                    } else if let Some(igdb_id) = genre_slug_to_id.get(&d.igdb_slug).copied() {
+                        // Symmetric fallback: treat it as a genre if IGDB reports it that way.
+                        debug!(
+                            target = "igdb",
+                            igdb_slug = %d.igdb_slug,
+                            "IGDB slug not found in themes; resolved as genre"
+                        );
+                        allowed_genre_ids.push(igdb_id);
+                        igdb_genre_to_local.insert(
+                            igdb_id,
+                            (
+                                d.local_slug.clone(),
+                                d.igdb_slug.clone(),
+                                d.display_name.clone(),
+                            ),
+                        );
+                    } else {
+                        warn!(
+                            target = "igdb",
+                            igdb_slug = %d.igdb_slug,
+                            "IGDB theme slug not found; skipping"
+                        );
+                    }
+                }
+            }
+        }
+        allowed_genre_ids.sort_unstable();
+        allowed_genre_ids.dedup();
+        allowed_theme_ids.sort_unstable();
+        allowed_theme_ids.dedup();
+
+        if allowed_genre_ids.is_empty() && allowed_theme_ids.is_empty() {
+            warn!(
+                target = "igdb",
+                "no valid IGDB genre/theme IDs resolved; top-monthly run will do nothing"
+            );
+            return Ok(0);
+        }
+
+        let genre_attach =
+            build_genre_attach_context(db, &igdb_genre_to_local, &igdb_theme_to_local).await;
+        if let Some(ctx) = genre_attach.as_ref() {
+            if !ctx.enabled {
+                warn!(
+                    target = "igdb",
+                    "genres/game_genre tables missing; skipping normalized genre pivot writes"
+                );
+            }
+        }
+
+        let start_epoch = Self::naive_to_epoch(month_start.and_hms_opt(0, 0, 0))
+            .context("failed to compute month start epoch")?;
+        let end_epoch = Self::naive_to_epoch(month_end.and_hms_opt(23, 59, 59))
+            .context("failed to compute month end epoch")?;
+
+        let meta = json!({
+            "mode": "top-monthly",
+            "month_start": month_start.to_string(),
+            "month_end": month_end.to_string(),
+            "limit": limit,
+            "igdb_genre_ids": allowed_genre_ids,
+            "igdb_theme_ids": allowed_theme_ids,
+        });
+        let ingest_id = ingest_run_start(db, provider_id, None, Some(meta)).await?;
+
+        let mut cache = ProviderEntityCache::new(db.clone());
+        let mut total = 0usize;
+        let mut toplist_product_ids: Vec<i64> = Vec::new();
+        let mut offset = 0usize;
+        let mut page = 0usize;
+        let page_limit = limit.min(self.effective_page_size(0));
+        let max_pages = self.effective_max_pages(0);
+
+        loop {
+            if total >= limit {
+                break;
+            }
+            if page >= max_pages {
+                break;
+            }
+
+            let remaining = limit.saturating_sub(total).max(1);
+            let q_limit = page_limit.min(remaining);
+            let query = self.build_top_monthly_games_query(
+                start_epoch,
+                end_epoch,
+                &allowed_genre_ids,
+                &allowed_theme_ids,
+                offset,
+                q_limit,
+            );
+            let games = self.fetch_games(&query).await?;
+            if games.is_empty() {
+                break;
+            }
+
+            let characters = self.fetch_characters_for_games(&games).await?;
+            let processed_product_ids = self
+                .persist_games(
+                    db,
+                    provider_id,
+                    &mut cache,
+                    &games,
+                    &characters,
+                    provider_items_exists,
+                    provider_media_links_exists,
+                    title_schema,
+                    genre_attach.as_ref(),
+                )
+                .await?;
+
+            let processed = processed_product_ids.len();
+            total += processed;
+            toplist_product_ids.extend(processed_product_ids);
+            page += 1;
+            offset += q_limit;
+
+            self.throttle().await;
+            debug!(
+                target = "igdb",
+                page, processed, total, "igdb top-monthly page ingested"
+            );
+
+            if games.len() < q_limit {
+                break;
+            }
+        }
+
+        // Persist toplist membership for Spotlight consumption (best-effort; schema optional).
+        let period_start = month_start.to_string();
+        let period_end = month_end.to_string();
+        let toplist_slug = format!("igdb:top_monthly:{period_start}:{period_end}");
+
+        let mut ranked: Vec<(u32, i64)> = Vec::new();
+        let mut seen: HashSet<i64> = HashSet::new();
+        for pid in toplist_product_ids.into_iter() {
+            if !seen.insert(pid) {
+                continue;
+            }
+            let rank = (ranked.len() as u32) + 1;
+            ranked.push((rank, pid));
+            if ranked.len() >= limit {
+                break;
+            }
+        }
+
+        let toplist_meta = json!({
+            "source": "igdb",
+            "mode": "top-monthly",
+            "month_start": period_start.clone(),
+            "month_end": period_end.clone(),
+            "limit": limit,
+            "count": ranked.len(),
+        });
+        let toplist_id = upsert_provider_toplist(
+            db,
+            "igdb",
+            &toplist_slug,
+            "top_monthly",
+            Some(period_start.as_str()),
+            Some(period_end.as_str()),
+            None,
+            Some(toplist_meta),
+        )
+        .await?;
+        replace_provider_toplist_items(db, toplist_id, &ranked).await?;
+
+        ingest_run_finish(db, ingest_id, "completed", total as i64, 0, None).await?;
+        log_provider_snapshot(
+            db,
+            provider_id,
+            provider_items_exists,
+            provider_media_links_exists,
+        )
+        .await?;
+
+        Ok(total)
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum IgdbTagKind {
+    Genre,
+    Theme,
+}
+
+#[derive(Debug, Clone)]
+struct DesiredTag {
+    kind: IgdbTagKind,
+    igdb_slug: String,
+    local_slug: String,
+    display_name: String,
+}
+
+fn split_csv_tokens(raw: &str) -> Vec<String> {
+    raw.split(|c| c == ',' || c == ';')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+fn default_top_monthly_genre_tokens() -> Vec<String> {
+    vec![
+        "sports".into(),
+        "shooters".into(),
+        "fighting".into(),
+        "action".into(),
+        "simulators".into(),
+    ]
+}
+
+fn normalize_genre_token(token: &str) -> String {
+    token.trim().to_ascii_lowercase().replace(['_', '-'], " ")
+}
+
+fn build_desired_tags(tokens: &[String]) -> Vec<DesiredTag> {
+    let mut out = Vec::new();
+    for t in tokens {
+        let norm = normalize_genre_token(t);
+
+        let (canonical_local_slug, display_name) = match norm.as_str() {
+            "sport" | "sports" => ("sports".to_string(), "Sports".to_string()),
+            "shooter" | "shooters" | "shooting" => ("shooter".to_string(), "Shooter".to_string()),
+            "fighting" | "fighter" | "fighters" => ("fighting".to_string(), "Fighting".to_string()),
+            "action" => ("action".to_string(), "Action".to_string()),
+            "sim" | "simulator" | "simulators" | "simulation" => {
+                ("simulator".to_string(), "Simulator".to_string())
+            }
+            other => {
+                let local_slug = other.replace(' ', "-");
+                let title_case = local_slug
+                    .split('-')
+                    .filter(|p| !p.is_empty())
+                    .map(|p| {
+                        let mut chars = p.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                (local_slug, title_case)
+            }
+        };
+
+        // IGDB quirk: many people expect "action" to be a genre, but in IGDB it's often a theme.
+        // We include both to be robust across potential IGDB taxonomy changes.
+        match norm.as_str() {
+            "sport" | "sports" => {
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Genre,
+                    igdb_slug: "sport".to_string(),
+                    local_slug: canonical_local_slug,
+                    display_name,
+                });
+            }
+            "shooter" | "shooters" | "shooting" => {
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Genre,
+                    igdb_slug: "shooter".to_string(),
+                    local_slug: canonical_local_slug,
+                    display_name,
+                });
+            }
+            "fighting" | "fighter" | "fighters" => {
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Genre,
+                    igdb_slug: "fighting".to_string(),
+                    local_slug: canonical_local_slug,
+                    display_name,
+                });
+            }
+            "action" => {
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Genre,
+                    igdb_slug: "action".to_string(),
+                    local_slug: canonical_local_slug.clone(),
+                    display_name: display_name.clone(),
+                });
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Theme,
+                    igdb_slug: "action".to_string(),
+                    local_slug: canonical_local_slug,
+                    display_name,
+                });
+            }
+            "sim" | "simulator" | "simulators" | "simulation" => {
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Genre,
+                    igdb_slug: "simulator".to_string(),
+                    local_slug: canonical_local_slug,
+                    display_name,
+                });
+            }
+            other => {
+                out.push(DesiredTag {
+                    kind: IgdbTagKind::Genre,
+                    igdb_slug: other.replace(' ', "-"),
+                    local_slug: canonical_local_slug,
+                    display_name,
+                });
+            }
+        }
+    }
+
+    out.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.igdb_slug.cmp(&b.igdb_slug)));
+    out.dedup_by(|a, b| a.kind == b.kind && a.igdb_slug == b.igdb_slug);
+    out
+}
+
+fn resolve_month_bounds(month: Option<&str>) -> Result<(NaiveDate, NaiveDate)> {
+    let (year, month_num) = if let Some(spec) = month {
+        let trimmed = spec.trim();
+        if trimmed.is_empty() {
+            let now = Utc::now().date_naive();
+            (now.year(), now.month())
+        } else {
+            // Accept YYYY-MM
+            let parts: Vec<&str> = trimmed.split('-').collect();
+            if parts.len() != 2 {
+                anyhow::bail!("IGDB_TOP_MONTHLY_MONTH must be YYYY-MM (got: {trimmed})");
+            }
+            let y: i32 = parts[0]
+                .parse()
+                .map_err(|_| anyhow!("invalid year in IGDB_TOP_MONTHLY_MONTH: {trimmed}"))?;
+            let m: u32 = parts[1]
+                .parse()
+                .map_err(|_| anyhow!("invalid month in IGDB_TOP_MONTHLY_MONTH: {trimmed}"))?;
+            (y, m)
+        }
+    } else {
+        let now = Utc::now().date_naive();
+        (now.year(), now.month())
+    };
+
+    let start = NaiveDate::from_ymd_opt(year, month_num, 1)
+        .ok_or_else(|| anyhow!("invalid month bounds year={year} month={month_num}"))?;
+    let (next_year, next_month) = if month_num == 12 {
+        (year + 1, 1)
+    } else {
+        (year, month_num + 1)
+    };
+    let next_start = NaiveDate::from_ymd_opt(next_year, next_month, 1)
+        .ok_or_else(|| anyhow!("invalid next month bounds year={next_year} month={next_month}"))?;
+    let end = next_start
+        .pred_opt()
+        .ok_or_else(|| anyhow!("failed to compute month end"))?;
+    Ok((start, end))
+}
+
+async fn build_genre_attach_context(
+    db: &Db,
+    igdb_genre_id_to_local: &HashMap<i64, (String, String, String)>,
+    igdb_theme_id_to_local: &HashMap<i64, (String, String, String)>,
+) -> Option<GenreAttachContext> {
+    let genres_exists = table_exists(db, "genres").await.unwrap_or(false);
+    let game_genre_exists = table_exists(db, "game_genre").await.unwrap_or(false);
+    if !genres_exists || !game_genre_exists {
+        return Some(GenreAttachContext {
+            enabled: false,
+            igdb_genre_id_to_local_genre_id: HashMap::new(),
+            igdb_theme_id_to_local_genre_id: HashMap::new(),
+            game_genre_has_timestamps: false,
+        });
+    }
+
+    let genres_has_slug = column_exists(db, "genres", "slug").await.unwrap_or(false);
+    let genres_has_name = column_exists(db, "genres", "name").await.unwrap_or(false);
+    let game_genre_has_product_id = column_exists(db, "game_genre", "product_id")
+        .await
+        .unwrap_or(false);
+    let game_genre_has_genre_id = column_exists(db, "game_genre", "genre_id")
+        .await
+        .unwrap_or(false);
+
+    if !genres_has_slug
+        || !genres_has_name
+        || !game_genre_has_product_id
+        || !game_genre_has_genre_id
+    {
+        warn!(
+            target = "igdb",
+            genres_has_slug,
+            genres_has_name,
+            game_genre_has_product_id,
+            game_genre_has_genre_id,
+            "genres/game_genre columns missing; skipping normalized genre pivot writes"
+        );
+        return Some(GenreAttachContext {
+            enabled: false,
+            igdb_genre_id_to_local_genre_id: HashMap::new(),
+            igdb_theme_id_to_local_genre_id: HashMap::new(),
+            game_genre_has_timestamps: false,
+        });
+    }
+
+    let genres_has_created_at = column_exists(db, "genres", "created_at")
+        .await
+        .unwrap_or(false);
+    let genres_has_updated_at = column_exists(db, "genres", "updated_at")
+        .await
+        .unwrap_or(false);
+    let game_genre_has_created_at = column_exists(db, "game_genre", "created_at")
+        .await
+        .unwrap_or(false);
+    let game_genre_has_updated_at = column_exists(db, "game_genre", "updated_at")
+        .await
+        .unwrap_or(false);
+    let game_genre_has_timestamps = game_genre_has_created_at && game_genre_has_updated_at;
+
+    let has_timestamps = genres_has_created_at && genres_has_updated_at;
+
+    let mut genre_map: HashMap<i64, i64> = HashMap::new();
+    for (igdb_id, (primary_slug, alt_slug, display_name)) in igdb_genre_id_to_local {
+        match find_or_create_genre(db, primary_slug, alt_slug, display_name, has_timestamps).await {
+            Ok(Some(local_id)) => {
+                genre_map.insert(*igdb_id, local_id);
+            }
+            Ok(None) => {}
+            Err(err) => {
+                warn!(
+                    target = "igdb",
+                    igdb_genre_id = *igdb_id,
+                    primary_slug = %primary_slug,
+                    alt_slug = %alt_slug,
+                    error = %err,
+                    "failed to resolve/create local genre (best-effort)"
+                );
+            }
+        }
+    }
+
+    let mut theme_map: HashMap<i64, i64> = HashMap::new();
+    for (igdb_id, (primary_slug, alt_slug, display_name)) in igdb_theme_id_to_local {
+        match find_or_create_genre(db, primary_slug, alt_slug, display_name, has_timestamps).await {
+            Ok(Some(local_id)) => {
+                theme_map.insert(*igdb_id, local_id);
+            }
+            Ok(None) => {}
+            Err(err) => {
+                warn!(
+                    target = "igdb",
+                    igdb_theme_id = *igdb_id,
+                    primary_slug = %primary_slug,
+                    alt_slug = %alt_slug,
+                    error = %err,
+                    "failed to resolve/create local theme-as-genre (best-effort)"
+                );
+            }
+        }
+    }
+
+    Some(GenreAttachContext {
+        enabled: true,
+        igdb_genre_id_to_local_genre_id: genre_map,
+        igdb_theme_id_to_local_genre_id: theme_map,
+        game_genre_has_timestamps,
+    })
+}
+
+async fn find_or_create_genre(
+    db: &Db,
+    primary_slug: &str,
+    alt_slug: &str,
+    display_name: &str,
+    has_timestamps: bool,
+) -> Result<Option<i64>> {
+    let existing: Option<i64> = sqlx::query_scalar(
+        "select id from genres where lower(slug) = lower($1) or lower(slug) = lower($2) or lower(name) = lower($3) limit 1",
+    )
+    .persistent(false)
+    .bind(primary_slug)
+    .bind(alt_slug)
+    .bind(display_name)
+    .fetch_optional(&db.pool)
+    .await?;
+    if let Some(id) = existing {
+        return Ok(Some(id));
+    }
+
+    // Best-effort insert if missing.
+    if has_timestamps {
+        let created: Option<i64> = sqlx::query_scalar(
+            "insert into genres (slug, name, created_at, updated_at) values ($1, $2, now(), now()) returning id",
+        )
+        .persistent(false)
+        .bind(primary_slug)
+        .bind(display_name)
+        .fetch_optional(&db.pool)
+        .await
+        .ok()
+        .flatten();
+        return Ok(created);
+    }
+
+    let created: Option<i64> =
+        sqlx::query_scalar("insert into genres (slug, name) values ($1, $2) returning id")
+            .persistent(false)
+            .bind(primary_slug)
+            .bind(display_name)
+            .fetch_optional(&db.pool)
+            .await
+            .ok()
+            .flatten();
+    Ok(created)
+}
+
+async fn attach_genre_to_product(
+    db: &Db,
+    product_id: i64,
+    genre_id: i64,
+    has_timestamps: bool,
+) -> Result<()> {
+    if has_timestamps {
+        // Prefer a lightweight existence check to avoid relying on unique constraints.
+        let exists: Option<i64> = sqlx::query_scalar(
+            "select 1 from game_genre where product_id=$1 and genre_id=$2 limit 1",
+        )
+        .persistent(false)
+        .bind(product_id)
+        .bind(genre_id)
+        .fetch_optional(&db.pool)
+        .await?;
+        if exists.is_some() {
+            return Ok(());
+        }
+        sqlx::query(
+            "insert into game_genre (product_id, genre_id, created_at, updated_at) values ($1, $2, now(), now())",
+        )
+        .persistent(false)
+        .bind(product_id)
+        .bind(genre_id)
+        .execute(&db.pool)
+        .await?;
+        return Ok(());
+    }
+
+    let exists: Option<i64> =
+        sqlx::query_scalar("select 1 from game_genre where product_id=$1 and genre_id=$2 limit 1")
+            .persistent(false)
+            .bind(product_id)
+            .bind(genre_id)
+            .fetch_optional(&db.pool)
+            .await?;
+    if exists.is_some() {
+        return Ok(());
+    }
+    sqlx::query("insert into game_genre (product_id, genre_id) values ($1, $2)")
+        .persistent(false)
+        .bind(product_id)
+        .bind(genre_id)
+        .execute(&db.pool)
+        .await?;
+    Ok(())
+}
+
+async fn column_exists(db: &Db, table: &str, column: &str) -> Result<bool> {
+    // NOTE: do not rely solely on search_path/current_schemas(true) here.
+    // In some environments (including Supabase + pooled connections), search_path can vary
+    // per-session, which can cause schema probing to miss `public.*` tables.
+    let exists_in_search_path: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = ANY (current_schemas(true))
+              AND table_name = $1
+              AND column_name = $2
+        )",
+    )
+    .persistent(false)
+    .bind(table)
+    .bind(column)
+    .fetch_one(&db.pool)
+    .await?;
+
+    if exists_in_search_path {
+        return Ok(true);
+    }
+
+    let exists_in_public: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = $1
+              AND column_name = $2
+        )",
+    )
+    .persistent(false)
+    .bind(table)
+    .bind(column)
+    .fetch_one(&db.pool)
+    .await?;
+
+    if exists_in_public {
+        return Ok(true);
+    }
+
+    // Last resort: any non-system schema.
+    let exists_any: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+              AND table_name = $1
+              AND column_name = $2
+        )",
+    )
+    .persistent(false)
+    .bind(table)
+    .bind(column)
+    .fetch_one(&db.pool)
+    .await?;
+
+    Ok(exists_any)
+}
+
+async fn detect_title_schema(db: &Db) -> Result<TitleSchemaFlags> {
+    // Schema detection: some DBs use a source-registry schema where `video_game_titles` is keyed by
+    // (video_game_source_id, video_game_source_id), and may require video_game_id (NOT NULL) or product_id.
+    let titles_has_source_id = column_exists(db, "video_game_titles", "video_game_source_id")
+        .await
+        .unwrap_or(false);
+    let titles_has_video_game_source_id =
+        column_exists(db, "video_game_titles", "video_game_source_id")
+            .await
+            .unwrap_or(false);
+    let sources_table_exists = table_exists(db, "video_game_sources")
+        .await
+        .unwrap_or(false);
+    if titles_has_source_id && titles_has_video_game_source_id && !sources_table_exists {
+        warn!(
+            target = "igdb",
+            "video_game_titles has (video_game_source_id, video_game_source_id) but video_game_sources table is missing; falling back to legacy title schema"
+        );
+    }
+    let keyed_by_source_item =
+        titles_has_source_id && titles_has_video_game_source_id && sources_table_exists;
+    let has_video_game_id = if keyed_by_source_item {
+        column_exists(db, "video_game_titles", "video_game_id")
+            .await
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    let has_product_id = if keyed_by_source_item {
+        column_exists(db, "video_game_titles", "product_id")
+            .await
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    let video_games_is_laravel = if has_video_game_id {
+        column_exists(db, "video_games", "product_id")
+            .await
+            .unwrap_or(false)
+            && column_exists(db, "video_games", "title")
+                .await
+                .unwrap_or(false)
+    } else {
+        false
+    };
+    let source_id = if keyed_by_source_item {
+        Some(ensure_video_game_source(db, IGDB_PROVIDER_SLUG, IGDB_PROVIDER_NAME).await?)
+    } else {
+        None
+    };
+    Ok(TitleSchemaFlags {
+        keyed_by_source_item,
+        has_video_game_id,
+        has_product_id,
+        video_games_is_laravel,
+        source_id,
+    })
+}
+
 #[instrument(skip(db))]
-async fn log_provider_snapshot(db: &Db, provider_id: i64) -> Result<()> {
-    let provider_items = fetch_provider_count(
-        db,
-        "SELECT COUNT(*)::bigint FROM provider_items WHERE provider_id=$1",
-        provider_id,
-    )
-    .await?;
-    let provider_media_links = fetch_provider_count(
-        db,
-        "SELECT COUNT(*)::bigint FROM provider_media_links WHERE provider_id=$1",
-        provider_id,
-    )
-    .await?;
+async fn log_provider_snapshot(
+    db: &Db,
+    provider_id: i64,
+    provider_items_exists: bool,
+    provider_media_links_exists: bool,
+) -> Result<()> {
+    let provider_items = if provider_items_exists {
+        fetch_provider_count(
+            db,
+            "SELECT COUNT(*)::bigint FROM provider_items WHERE provider_id=$1",
+            provider_id,
+        )
+        .await?
+    } else {
+        0
+    };
+    let provider_media_links = if provider_media_links_exists {
+        fetch_provider_count(
+            db,
+            "SELECT COUNT(*)::bigint FROM vg_source_media_links WHERE provider_id=$1",
+            provider_id,
+        )
+        .await?
+    } else {
+        0
+    };
     info!(
         target = "igdb",
         provider_items, provider_media_links, "IGDB provider snapshot"
@@ -1080,9 +2263,51 @@ async fn fetch_provider_count(db: &Db, sql: &str, provider_id: i64) -> Result<i6
     }
 }
 
+async fn table_exists(db: &Db, table: &str) -> Result<bool> {
+    let exists: (bool,) = sqlx::query_as(
+        "SELECT EXISTS (\
+            SELECT 1 FROM information_schema.tables\
+            WHERE table_schema='public' AND table_name=$1\
+        )",
+    )
+    .persistent(false)
+    .bind(table)
+    .fetch_one(&db.pool)
+    .await?;
+    Ok(exists.0)
+}
+
 #[instrument(skip(db))]
 pub async fn run_from_env(db: &Db) -> Result<()> {
+    // Check for required schema tables (legacy-safe)
+    let required_tables = [
+        "platforms",
+        "providers",
+        "provider_items",
+        "video_game_sources",
+        "video_game_titles",
+        "video_games",
+    ];
+    let mut missing: Vec<&str> = Vec::new();
+    for t in required_tables {
+        if !table_exists(db, t).await.unwrap_or(false) {
+            missing.push(t);
+        }
+    }
+    if !missing.is_empty() {
+        use crate::database_ops::ingest_providers::php_compat_schema;
+        let compat = php_compat_schema(db).await.unwrap_or(false);
+        tracing::warn!(
+            missing_tables = ?missing,
+            php_compat = compat,
+            "igdb run_from_env: required schema missing; skipping IGDB ingestion to preserve backward compatibility"
+        );
+        return Ok(());
+    }
+
     let service = IgdbService::new_from_env()?;
+    let mode = std::env::var("IGDB_MODE").unwrap_or_else(|_| "backfill".to_string());
+
     let current_year = Utc::now().year();
     let mut from_year = service
         .cfg
@@ -1092,12 +2317,56 @@ pub async fn run_from_env(db: &Db) -> Result<()> {
     if from_year > to_year {
         std::mem::swap(&mut from_year, &mut to_year);
     }
-    let processed = service
-        .backfill_range(db, from_year, to_year, &service.cfg.platform_ids, 0, 0)
-        .await?;
+
+    // Smoke-test sanity: make it obvious which env-derived limits are in effect.
     info!(
         target = "igdb",
-        processed, from_year, to_year, "IGDB ingestion completed"
+        reqs_per_min = service.cfg.reqs_per_min,
+        rps = service.cfg.rps,
+        concurrency = service.cfg.concurrency,
+        page_size = service.cfg.page_size,
+        max_pages = service.cfg.max_pages,
+        max_retries = service.cfg.max_retries,
+        backoff_ms = service.cfg.backoff_ms,
+        from_year,
+        to_year,
+        platform_ids = ?service.cfg.platform_ids,
+        window_start = ?service.cfg.window_start,
+        window_end = ?service.cfg.window_end,
+        characters_per_game = service.cfg.characters_per_game,
+        "IGDB run config"
+    );
+
+    let processed = if matches!(
+        mode.as_str(),
+        "top-50"
+            | "top_50"
+            | "top50"
+            | "top-monthly"
+            | "top_monthly"
+            | "topmonthly"
+            | "monthly-top"
+            | "monthly"
+    ) {
+        if matches!(mode.as_str(), "top-50" | "top_50" | "top50") {
+            info!(target = "igdb", mode = %mode, "IGDB running top-50 mode (alias of top-monthly)");
+        } else {
+            info!(target = "igdb", mode = %mode, "IGDB running top-monthly mode");
+        }
+        service.ingest_top_monthly_from_env(db).await?
+    } else {
+        info!(target = "igdb", mode = %mode, "IGDB running backfill mode");
+        service
+            .backfill_range(db, from_year, to_year, &service.cfg.platform_ids, 0, 0)
+            .await?
+    };
+    info!(
+        target = "igdb",
+        processed,
+        from_year,
+        to_year,
+        mode = %mode,
+        "IGDB ingestion completed"
     );
     Ok(())
 }

@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use psstore_client::{PsConfig, PsProductSummary, PsStoreClient};
 use std::{fs::File, io::Write};
 

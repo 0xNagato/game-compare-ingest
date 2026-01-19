@@ -1,17 +1,17 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::Utc;
 use i_miss_rust::database_ops::db::{Db, PriceRow};
 use i_miss_rust::database_ops::ingest_providers::{
-    PostIngestSummary, ensure_offer, ensure_offer_jurisdiction, ensure_product_named,
-    ensure_provider, ensure_provider_item, ensure_retailer, ensure_sellable, ingest_prices,
-    link_provider_offer,
+    ensure_offer, ensure_offer_jurisdiction, ensure_product_named, ensure_provider,
+    ensure_provider_item, ensure_retailer, ensure_sellable, ingest_prices, link_provider_offer,
+    PostIngestSummary,
 };
 use i_miss_rust::database_ops::media_map::MediaMap;
 use i_miss_rust::util::env as env_util;
 use serde::Deserialize;
 use sqlx::Row;
 use std::env;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Debug, Deserialize)]
 struct ItadRow {
@@ -107,7 +107,7 @@ async fn main() -> Result<()> {
         let now = Utc::now();
         batch.push(PriceRow {
             offer_jurisdiction_id: oj_id,
-            provider_item_id: Some(item_id),
+            video_game_source_id: Some(item_id),
             recorded_at: now,
             amount_minor,
             tax_inclusive: true,
@@ -194,11 +194,11 @@ async fn ensure_national_jurisdiction(db: &Db, country_id: i64) -> Result<i64> {
     Ok(rec.get::<i64, _>("id"))
 }
 
-async fn upsert_provider_media_url(db: &Db, provider_item_id: i64, url: &str) -> Result<i64> {
+async fn upsert_provider_media_url(db: &Db, video_game_source_id: i64, url: &str) -> Result<i64> {
     if let Some(rec) = sqlx::query(
-        "SELECT id FROM public.provider_media_links WHERE provider_item_id=$1 AND url=$2",
+        "SELECT id FROM public.provider_media_links WHERE video_game_source_id=$1 AND url=$2",
     )
-    .bind(provider_item_id)
+    .bind(video_game_source_id)
     .bind(url)
     .fetch_optional(&db.pool)
     .await?
@@ -229,9 +229,9 @@ async fn upsert_provider_media_url(db: &Db, provider_item_id: i64, url: &str) ->
     };
     let rec = sqlx
         ::query(
-            "INSERT INTO public.provider_media_links (provider_item_id, url, kind, title) VALUES ($1,$2,$3::media_kind,$4) RETURNING id"
+            "INSERT INTO public.provider_media_links (video_game_source_id, url, kind, title) VALUES ($1,$2,$3::media_kind,$4) RETURNING id"
         )
-        .bind(provider_item_id)
+        .bind(video_game_source_id)
         .bind(url)
         .bind(kind)
         .bind(title)

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use i_miss_rust::database_ops::db::{CurrentPriceRow, Db, PriceRow};
 use i_miss_rust::util::env as env_util;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::Row; // bring Row trait for .get
 use std::env;
 
@@ -34,8 +34,8 @@ async fn main() -> Result<()> {
         .context("set INGEST_PRODUCT_SLUG to an existing or desired product slug")?;
     let sellable_kind = env::var("INGEST_SELLABLE_KIND").unwrap_or_else(|_| product_kind.clone());
 
-    let provider_item_id = env::var("INGEST_PROVIDER_ITEM_ID")
-        .context("set INGEST_PROVIDER_ITEM_ID (external SKU/id)")?;
+    let vg_source_item_id = env::var("INGEST_VG_SOURCE_ITEM_ID")
+        .context("set INGEST_VG_SOURCE_ITEM_ID (external SKU/id)")?;
     let provider_item_payload: Option<Value> = env::var("INGEST_PROVIDER_ITEM_PAYLOAD")
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
     let item_id = ensure_provider_item(
         &db,
         provider_id,
-        &provider_item_id,
+        &vg_source_item_id,
         provider_item_payload.clone(),
     )
     .await?;
@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     let rows = vec![
         PriceRow {
             offer_jurisdiction_id: oj_id,
-            provider_item_id: Some(item_id),
+            video_game_source_id: Some(item_id),
             recorded_at: earlier,
             amount_minor: 999,
             tax_inclusive: true,
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
         },
         PriceRow {
             offer_jurisdiction_id: oj_id,
-            provider_item_id: Some(item_id),
+            video_game_source_id: Some(item_id),
             recorded_at: now,
             amount_minor: 799,
             tax_inclusive: true,
@@ -347,15 +347,15 @@ async fn ensure_provider_item(
 
 async fn link_provider_offer(
     db: &Db,
-    provider_item_id: i64,
+    video_game_source_id: i64,
     offer_id: i64,
     confidence: Option<f32>,
 ) -> Result<i64> {
     if let Some(rec) = sqlx::query(
-        "SELECT id FROM publicprovider_offers WHERE provider_item_id=$1 AND offer_id=$2",
+        "SELECT id FROM publicprovider_offers WHERE video_game_source_id=$1 AND offer_id=$2",
     )
     .persistent(false)
-    .bind(provider_item_id)
+    .bind(video_game_source_id)
     .bind(offer_id)
     .fetch_optional(&db.pool)
     .await?
@@ -364,10 +364,10 @@ async fn link_provider_offer(
     }
     let inserted = sqlx
         ::query(
-            "INSERT INTO publicprovider_offers (provider_item_id, offer_id, confidence) VALUES ($1,$2,$3) RETURNING id"
+            "INSERT INTO publicprovider_offers (video_game_source_id, offer_id, confidence) VALUES ($1,$2,$3) RETURNING id"
         )
         .persistent(false)
-        .bind(provider_item_id)
+        .bind(video_game_source_id)
         .bind(offer_id)
         .bind(confidence)
         .fetch_one(&db.pool).await?;

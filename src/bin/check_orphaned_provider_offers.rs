@@ -40,10 +40,10 @@ async fn main() -> anyhow::Result<()> {
     if orphaned_count > 0 {
         println!("\n=== Sample Orphaned Provider Offers ===");
         let samples = sqlx::query(
-            "SELECT po.id, po.provider_item_id, po.offer_id, po.confidence, 
+            "SELECT po.id, po.video_game_source_id, po.offer_id, po.confidence, 
                     pi.external_item_id, p.name as provider_name
              FROM provider_offers po
-             JOIN provider_items pi ON pi.id = po.provider_item_id
+             JOIN provider_items pi ON pi.id = po.video_game_source_id
              JOIN providers p ON p.id = pi.provider_id
              WHERE NOT EXISTS (SELECT 1 FROM offers o WHERE o.id = po.offer_id)
              LIMIT 10",
@@ -53,15 +53,15 @@ async fn main() -> anyhow::Result<()> {
 
         for row in samples {
             let po_id: i64 = row.get("id");
-            let provider_item_id: i64 = row.get("provider_item_id");
+            let video_game_source_id: i64 = row.get("video_game_source_id");
             let offer_id: i64 = row.get("offer_id");
             let confidence: Option<f32> = row.get("confidence");
             let external_item_id: String = row.get("external_item_id");
             let provider_name: String = row.get("provider_name");
 
             println!(
-                "  provider_offer id={}, provider_item_id={} (ext_id={}, provider={}), deleted offer_id={}, confidence={:?}",
-                po_id, provider_item_id, external_item_id, provider_name, offer_id, confidence
+                "  provider_offer id={}, video_game_source_id={} (ext_id={}, provider={}), deleted offer_id={}, confidence={:?}",
+                po_id, video_game_source_id, external_item_id, provider_name, offer_id, confidence
             );
         }
     }

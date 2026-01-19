@@ -1,9 +1,9 @@
 use crate::database_ops::db::Db;
 use crate::database_ops::{ingest_providers, media_map::normalize_title};
+use crate::util::env as env_util;
 use anyhow::Result;
 use psstore_client::{PsConfig, PsProductSummary, PsStoreClient};
 use std::collections::HashMap;
-use crate::util::env as env_util;
 
 // Mirrors original ps_ingest demo logic (SANITY-mode fetch and optional ascription)
 pub async fn run_from_env() -> Result<()> {
@@ -149,21 +149,9 @@ pub async fn run_from_env() -> Result<()> {
             };
             let vg_id =
                 ingest_providers::ensure_video_game(&db, title_id, platform_id, None).await?;
-            if let Some(prod) = &item.product_id {
-                match client.product_star_rating(&locale, prod).await {
-                    Ok(Some((avg, cnt))) => {
-                        let _ = sqlx
-                            ::query(
-                                "UPDATE public.video_games SET average_rating=$1, rating_count=$2, rating_updated_at=now() WHERE id=$3"
-                            )
-                            .bind(avg)
-                            .bind(cnt)
-                            .bind(vg_id)
-                            .execute(&db.pool).await;
-                    }
-                    _ => {}
-                }
-            }
+            // NOTE: Redundant star rating API call removed (2025-12-27)
+            // The main prices.rs pipeline extracts ratings from product detail responses.
+            // Demo ingestion should rely on that pipeline rather than making separate API calls.
             if !item.genres.is_empty() {
                 let _ = sqlx::query("UPDATE public.video_games SET genres = $1 WHERE id=$2")
                     .bind(&item.genres)
@@ -179,20 +167,32 @@ pub async fn run_from_env() -> Result<()> {
             )
             .await?;
             if let Some(prod_id) = &item.product_id {
-                let provider_item_id =
+                let video_game_source_id =
                     ingest_providers::ensure_provider_item(&db, provider_id, prod_id, None).await?;
                 let mut all_urls: Vec<String> = Vec::new();
                 all_urls.extend(item.media_image_urls.iter().cloned());
                 all_urls.extend(item.media_video_urls.iter().cloned());
+                all_urls.retain(|u| {
+                    let lc = u.to_ascii_lowercase();
+                    !(lc.contains("screenshot")
+                        || lc.contains("screenshots")
+                        || lc.contains("logo")
+                        || lc.contains("icon")
+                        || lc.contains("thumbnail")
+                        || lc.contains("thumb"))
+                });
                 all_urls.sort();
                 all_urls
                     .drain(..)
                     .collect::<std::collections::HashSet<_>>()
                     .into_iter()
                     .for_each(|u| all_urls.push(u));
-                let _ =
-                    ingest_providers::ensure_provider_media_links(&db, provider_item_id, &all_urls)
-                        .await?;
+                let _ = ingest_providers::ensure_vg_source_media_links(
+                    &db,
+                    video_game_source_id,
+                    &all_urls,
+                )
+                .await?;
             }
         }
         println!("Ascribed items into video_games (products/software/titles/games).");

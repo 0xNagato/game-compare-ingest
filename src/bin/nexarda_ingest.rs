@@ -11,10 +11,8 @@ async fn main() -> Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let database_url = std::env::var("SUPABASE_DB_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .or_else(|_| std::env::var("DB_URL"))
-        .expect("Set DATABASE_URL or SUPABASE_DB_URL or DB_URL");
+    let database_url = env::db_url_prefer_session()
+        .expect("Set SUPABASE_IPV6_DB / SUPABASE_DB_URL / DATABASE_URL / DB_URL");
     let max_conns: u32 = std::env::var("DB_MAX_CONNS")
         .ok()
         .and_then(|s| s.parse().ok())

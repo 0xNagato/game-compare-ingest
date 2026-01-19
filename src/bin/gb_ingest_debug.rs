@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde_json::Value;
 use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
     Row,
-    postgres::{PgConnectOptions, PgPoolOptions},
 };
 use std::{fs, str::FromStr};
 
@@ -20,7 +20,13 @@ async fn main() -> Result<()> {
         .unwrap_or(5000);
 
     println!("🔗 Connecting to database (no prepared statements)...");
-    let connect_options = PgConnectOptions::from_str(&db_url)?.statement_cache_capacity(0); // PgBouncer safe!
+    let mut connect_options = PgConnectOptions::from_str(&db_url)?.statement_cache_capacity(0); // PgBouncer safe!
+
+    // Ensure TLS is enabled when DSN contains sslmode=require
+    if db_url.contains("sslmode=require") && !db_url.contains("sslmode=disable") {
+        connect_options = connect_options.ssl_mode(PgSslMode::Require);
+    }
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect_with(connect_options)
@@ -120,40 +126,42 @@ async fn main() -> Result<()> {
 
                     // 2. Ensure platform
                     println!("  📌 Ensuring platform...");
-                    let platform_id: i64 = match sqlx::query(
-                        "SELECT id FROM platforms WHERE name = $1",
-                    )
-                    .bind("PC")
-                    .fetch_optional(&mut *tx)
-                    .await?
-                    {
-                        Some(row) => {
-                            let id: i64 = row.get("id");
-                            println!("    ✓ Platform exists: {}", id);
-                            id
-                        }
-                        None => {
-                            let row = sqlx::query(
+                    let platform_id: i64 =
+                        match sqlx::query("SELECT id FROM platforms WHERE name = $1")
+                            .bind("PC")
+                            .fetch_optional(&mut *tx)
+                            .await?
+                        {
+                            Some(row) => {
+                                let id: i64 = row.get("id");
+                                println!("    ✓ Platform exists: {}", id);
+                                id
+                            }
+                            None => {
+                                let row = sqlx::query(
                                 "INSERT INTO platforms (name, slug) VALUES ($1, $2) RETURNING id",
                             )
                             .bind("PC")
                             .bind("pc")
                             .fetch_one(&mut *tx)
                             .await?;
-                            let id: i64 = row.get("id");
-                            println!("    ✓ Platform created: {}", id);
-                            id
-                        }
-                    };
+                                let id: i64 = row.get("id");
+                                println!("    ✓ Platform created: {}", id);
+                                id
+                            }
+                        };
 
                     // 3. Ensure product
                     println!("  📌 Ensuring product...");
                     let slug = name.to_lowercase().replace(" ", "-");
                     let row = sqlx
                         ::query(
-                            "INSERT INTO products (slug, kind) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug RETURNING id"
+                            "INSERT INTO products (slug, name, platform, category) VALUES ($1, $2, $3, $4) \
+                             ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name, updated_at=now() RETURNING id"
                         )
                         .bind(&slug)
+                        .bind(name)
+                        .bind("unknown")
                         .bind("software")
                         .fetch_one(&mut *tx).await?;
                     let product_id: i64 = row.get("id");
@@ -230,7 +238,7 @@ async fn main() -> Result<()> {
 
                     // 7. Provider item
                     println!("  📌 Ensuring provider item...");
-                    let provider_item_id: i64 = match
+                    let video_game_source_id: i64 = match
                         sqlx
                             ::query(
                                 "SELECT id FROM provider_items WHERE provider_id = $1 AND external_item_id = $2"
@@ -263,10 +271,10 @@ async fn main() -> Result<()> {
                     println!("  📌 Linking source mapping...");
                     let _ = sqlx
                         ::query(
-                            "INSERT INTO video_game_title_sources (title_id, provider_item_id) VALUES ($1, $2) ON CONFLICT (provider_item_id) DO NOTHING"
+                            "INSERT INTO video_game_title_sources (title_id, video_game_source_id) VALUES ($1, $2) ON CONFLICT (video_game_source_id) DO NOTHING"
                         )
                         .bind(title_id)
-                        .bind(provider_item_id)
+                        .bind(video_game_source_id)
                         .execute(&mut *tx).await?;
 
                     // Commit transaction

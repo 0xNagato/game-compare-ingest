@@ -1,566 +1,749 @@
--- 0001_full_consolidated_schema.sql
--- Consolidated idempotent schema creation (corrected)
--- NOTE: This file supersedes earlier numbered squashed migrations by providing
--- a dependency-ordered, idempotent build of the entire schema. Safe to re-run.
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
 
--- =============================
--- EXTENSIONS & ENUMS
--- =============================
--- Ensure schemas exist first
-CREATE SCHEMA IF NOT EXISTS ext;
-DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA public; EXCEPTION WHEN OTHERS THEN NULL; END $$;
-DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA ext; EXCEPTION WHEN OTHERS THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE cmp_op AS ENUM ('above','below'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE sellable_kind AS ENUM ('software','hardware'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- =============================
--- LOOKUPS
--- =============================
-CREATE TABLE IF NOT EXISTS currencies (
-  id bigserial PRIMARY KEY,
+CREATE TABLE public._sqlx_migrations (
+  version bigint NOT NULL,
+  description text NOT NULL,
+  installed_on timestamp with time zone NOT NULL DEFAULT now(),
+  success boolean NOT NULL,
+  checksum bytea NOT NULL,
+  execution_time bigint NOT NULL,
+  CONSTRAINT _sqlx_migrations_pkey PRIMARY KEY (version)
+);
+CREATE TABLE public.alerts (
+  id bigint NOT NULL DEFAULT nextval('alerts_id_seq'::regclass),
+  user_id bigint NOT NULL,
+  product_id bigint NOT NULL,
+  region_code character varying NOT NULL,
+  threshold_btc numeric NOT NULL,
+  comparison_operator character varying NOT NULL DEFAULT 'below'::character varying CHECK (comparison_operator::text = ANY (ARRAY['below'::character varying, 'above'::character varying]::text[])),
+  channel character varying NOT NULL CHECK (channel::text = ANY (ARRAY['email'::character varying, 'discord'::character varying]::text[])),
+  is_active boolean NOT NULL DEFAULT true,
+  last_triggered_at timestamp with time zone,
+  settings jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_auth_id uuid,
+  CONSTRAINT alerts_pkey PRIMARY KEY (id),
+  CONSTRAINT alerts_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT alerts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+CREATE TABLE public.canonical_media (
+  id bigint NOT NULL DEFAULT nextval('canonical_media_id_seq'::regclass),
+  url text NOT NULL,
+  url_hash text NOT NULL UNIQUE,
+  cdn_url text,
+  mime_type text,
+  width integer CHECK (width IS NULL OR width > 0),
+  height integer CHECK (height IS NULL OR height > 0),
+  size_bytes bigint CHECK (size_bytes IS NULL OR size_bytes > 0),
+  hash text,
+  storage_provider text,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_verified_at timestamp with time zone,
+  access_count bigint DEFAULT 0,
+  CONSTRAINT canonical_media_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.countries (
+  id bigint NOT NULL DEFAULT nextval('countries_id_seq'::regclass),
+  iso2 character NOT NULL UNIQUE,
+  iso3 character NOT NULL UNIQUE,
+  name text NOT NULL,
+  currency_id bigint,
+  code2 character UNIQUE,
+  CONSTRAINT countries_pkey PRIMARY KEY (id),
+  CONSTRAINT countries_currency_id_fkey FOREIGN KEY (currency_id) REFERENCES public.currencies(id)
+);
+CREATE TABLE public.currencies (
+  id bigint NOT NULL DEFAULT nextval('currencies_id_seq'::regclass),
   code text NOT NULL UNIQUE,
   name text NOT NULL,
-  minor_unit smallint NOT NULL
+  minor_unit smallint NOT NULL,
+  CONSTRAINT currencies_pkey PRIMARY KEY (id)
 );
-ALTER TABLE currencies ADD COLUMN IF NOT EXISTS minor_unit smallint;
-DO $$
-BEGIN
-  BEGIN
-    UPDATE currencies SET minor_unit = 2 WHERE minor_unit IS NULL;
-    ALTER TABLE currencies ALTER COLUMN minor_unit SET NOT NULL;
-  EXCEPTION WHEN undefined_column THEN
-    NULL;
-  END;
-EXCEPTION WHEN undefined_table THEN NULL;
-END $$;
-CREATE TABLE IF NOT EXISTS countries (
-  id bigserial PRIMARY KEY,
-  iso2 char(2) NOT NULL UNIQUE,
-  iso3 char(3) NOT NULL UNIQUE,
-  name text NOT NULL,
-  currency_id bigint REFERENCES currencies(id)
+CREATE TABLE public.current_price (
+  offer_jurisdiction_id bigint NOT NULL,
+  amount_minor bigint NOT NULL,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_display_price numeric DEFAULT ((amount_minor)::numeric / (100)::numeric),
+  agent text NOT NULL DEFAULT 'unknown'::text,
+  agent_priority smallint NOT NULL DEFAULT 0,
+  CONSTRAINT current_price_pkey PRIMARY KEY (offer_jurisdiction_id)
 );
-CREATE TABLE IF NOT EXISTS country_iso_map (
-  code2 char(2) PRIMARY KEY,
-  iso2 char(2) NOT NULL,
-  iso3 char(3) NOT NULL
-);
-INSERT INTO country_iso_map(code2, iso2, iso3) VALUES
-  ('US','US','USA'),('GB','GB','GBR'),('CA','CA','CAN'),('DE','DE','DEU'),('FR','FR','FRA'),('ES','ES','ESP'),('IT','IT','ITA'),('NL','NL','NLD'),('BE','BE','BEL'),('PT','PT','PRT'),('IE','IE','IRL'),('FI','FI','FIN'),('GR','GR','GRC'),('AT','AT','AUT'),('SE','SE','SWE'),('NO','NO','NOR'),('DK','DK','DNK'),('CH','CH','CHE'),('JP','JP','JPN'),('KR','KR','KOR'),('AU','AU','AUS'),('NZ','NZ','NZL'),('BR','BR','BRA'),('MX','MX','MEX'),('AR','AR','ARG'),('ZA','ZA','ZAF'),('TR','TR','TUR'),('UA','UA','UKR'),('HK','HK','HKG'),('TW','TW','TWN'),('SG','SG','SGP'),('MY','MY','MYS'),('TH','TH','THA'),('ID','ID','IDN'),('PH','PH','PHL'),('VN','VN','VNM'),('CN','CN','CHN'),('IL','IL','ISR'),('CL','CL','CHL'),('CO','CO','COL'),('PE','PE','PER'),('UY','UY','URY'),('KZ','KZ','KAZ'),('SA','SA','SAU'),('AE','AE','ARE'),('EG','EG','EGY')
-ON CONFLICT (code2) DO UPDATE SET iso2=EXCLUDED.iso2, iso3=EXCLUDED.iso3;
-CREATE OR REPLACE FUNCTION countries_iso_autofill()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF NEW.code2 IS NOT NULL THEN
-    IF NEW.iso2 IS NULL THEN
-      SELECT m.iso2 INTO NEW.iso2 FROM country_iso_map m WHERE m.code2 = NEW.code2;
-    END IF;
-    IF NEW.iso3 IS NULL THEN
-      SELECT m.iso3 INTO NEW.iso3 FROM country_iso_map m WHERE m.code2 = NEW.code2;
-    END IF;
-  END IF;
-  RETURN NEW;
-END $$;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'countries_iso_autofill_trg') THEN
-    CREATE TRIGGER countries_iso_autofill_trg
-    BEFORE INSERT ON countries
-    FOR EACH ROW EXECUTE FUNCTION countries_iso_autofill();
-  END IF;
-END $$;
-CREATE TABLE IF NOT EXISTS jurisdictions (
-  id bigserial PRIMARY KEY,
-  country_id bigint NOT NULL REFERENCES countries(id) ON DELETE CASCADE,
-  region_code text,
-  region_key text GENERATED ALWAYS AS (coalesce(region_code,'')) STORED
-);
-DO $$ BEGIN IF NOT EXISTS (
-  SELECT 1 FROM pg_constraint WHERE conname='jurisdictions_country_region_key_uq' AND conrelid='public.jurisdictions'::regclass
-) THEN ALTER TABLE jurisdictions ADD CONSTRAINT jurisdictions_country_region_key_uq UNIQUE (country_id, region_key); END IF; END $$;
-
-CREATE TABLE IF NOT EXISTS tax_rules (
-  id bigserial PRIMARY KEY,
-  jurisdiction_id bigint NOT NULL REFERENCES jurisdictions(id) ON DELETE CASCADE,
-  effective_from date NOT NULL,
-  effective_to date,
-  rate_basis_points integer NOT NULL,
-  inclusive boolean NOT NULL DEFAULT true,
-  notes text,
-  UNIQUE (jurisdiction_id, effective_from)
-);
-
--- =============================
--- USERS
--- =============================
-CREATE TABLE IF NOT EXISTS users (
-  id bigserial PRIMARY KEY,
-  email citext NOT NULL UNIQUE,
-  name text,
-  timezone text NOT NULL DEFAULT 'UTC',
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
--- =============================
--- PRODUCTS & SPLITS
--- =============================
-CREATE TABLE IF NOT EXISTS products (
-  id bigserial PRIMARY KEY,
-  slug citext NOT NULL UNIQUE,
-  name text NOT NULL,
-  category text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS software (
-  product_id bigint PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS hardware (
-  product_id bigint PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS products_slug_trgm_idx ON products USING gin ((slug::text) ext.gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS products_name_trgm_idx ON products USING gin ((name) ext.gin_trgm_ops);
-
--- =============================
--- PLATFORMS
--- =============================
-CREATE TABLE IF NOT EXISTS platforms (
-  id bigserial PRIMARY KEY,
-  code text UNIQUE,
-  name text NOT NULL UNIQUE,
-  family text
-);
-CREATE INDEX IF NOT EXISTS platforms_name_trgm_idx ON platforms USING gin ((name) ext.gin_trgm_ops);
-
--- =============================
--- RETAILERS & PROVIDERS
--- =============================
-CREATE TABLE IF NOT EXISTS retailers (
-  id bigserial PRIMARY KEY,
-  slug citext UNIQUE,
-  name text NOT NULL
-);
-CREATE TABLE IF NOT EXISTS providers (
-  id bigserial PRIMARY KEY,
-  slug citext UNIQUE,
-  name text NOT NULL,
-  -- kind added to align with ingestion pipeline expectations (retailer_api|catalog|storefront|media)
-  kind text,
-  api_source text,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS retailer_providers (
-  id bigserial PRIMARY KEY,
-  retailer_id bigint NOT NULL REFERENCES retailers(id) ON DELETE CASCADE,
-  provider_id bigint NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-  UNIQUE (retailer_id, provider_id)
-);
-
--- =============================
--- VIDEO GAME TITLES & GAMES
--- =============================
-CREATE TABLE IF NOT EXISTS video_games (
-  id bigserial PRIMARY KEY,
-  title_id bigint NOT NULL,
-  platform_id bigint NOT NULL REFERENCES platforms(id),
-  edition text,
-  sellable_id bigint,
-  slug citext UNIQUE,
-  release_date date,
+CREATE TABLE public.exchange_rates (
+  id bigint NOT NULL DEFAULT nextval('exchange_rates_id_seq'::regclass),
+  base_currency text NOT NULL,
+  quote_currency text NOT NULL,
+  rate double precision NOT NULL,
+  provider text NOT NULL,
+  fetched_at timestamp with time zone NOT NULL,
   metadata jsonb,
-  average_rating real,
-  rating_count bigint,
-  rating_updated_at timestamptz,
-  genres text[],
-  display_title text,
-  developer text,
-  region_codes text[],
-  popularity_score numeric NOT NULL DEFAULT 0,
-  rating numeric NOT NULL DEFAULT 0,
-  synopsis text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  CONSTRAINT exchange_rates_pkey PRIMARY KEY (id)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_video_games_title_platform_null
-  ON video_games (title_id, platform_id)
-  WHERE edition IS NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_video_games_title_platform_edition
-  ON video_games (title_id, platform_id, (coalesce(edition,'')))
-  WHERE edition IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_video_games_title_id ON video_games (title_id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_vg_sellable_platform_edition
-  ON video_games (sellable_id, platform_id, (coalesce(edition,'')))
-  WHERE sellable_id IS NOT NULL;
-
-CREATE TABLE IF NOT EXISTS video_game_titles (
-  id bigserial PRIMARY KEY,
-  product_id bigint UNIQUE REFERENCES software(product_id) ON DELETE CASCADE,
-  video_game_id bigint REFERENCES video_games(id),
-  title text NOT NULL,
-  normalized_title text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-DO $$ BEGIN
-  BEGIN
-    ALTER TABLE public.video_game_titles ALTER COLUMN product_id DROP NOT NULL;
-  EXCEPTION WHEN undefined_column THEN
-    NULL;
-  END;
-EXCEPTION WHEN undefined_table THEN NULL; END $$;
-CREATE INDEX IF NOT EXISTS titles_title_trgm_idx ON video_game_titles USING gin ((title) ext.gin_trgm_ops);
-
--- =============================
--- GAME CONSOLES
--- =============================
-CREATE TABLE IF NOT EXISTS game_consoles (
-  id bigserial PRIMARY KEY,
-  product_id bigint NOT NULL REFERENCES hardware(product_id) ON DELETE CASCADE,
+CREATE TABLE public.game_consoles (
+  id bigint NOT NULL DEFAULT nextval('game_consoles_id_seq'::regclass),
+  product_id bigint NOT NULL,
   model text NOT NULL,
   variant text,
-  slug citext UNIQUE,
+  slug USER-DEFINED UNIQUE,
   release_date date,
   metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  platform_id bigint NOT NULL UNIQUE,
+  CONSTRAINT game_consoles_pkey PRIMARY KEY (id),
+  CONSTRAINT game_consoles_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES public.platforms(id)
 );
--- Use a UNIQUE INDEX for expression-based uniqueness (constraints cannot include expressions)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_game_consoles_product_model_variant
-  ON game_consoles (product_id, model, (coalesce(variant,'')));
-CREATE INDEX IF NOT EXISTS consoles_model_trgm_idx ON game_consoles USING gin ((model) ext.gin_trgm_ops);
-
--- =============================
--- SELLABLES & OFFERS
--- =============================
-CREATE TABLE IF NOT EXISTS sellables (
-  id bigserial PRIMARY KEY,
-  kind sellable_kind NOT NULL,
-  software_title_id bigint REFERENCES video_game_titles(id) ON DELETE CASCADE,
-  console_id bigint REFERENCES game_consoles(id) ON DELETE CASCADE,
-  CHECK ((kind='software' AND software_title_id IS NOT NULL AND console_id IS NULL) OR (kind='hardware' AND console_id IS NOT NULL AND software_title_id IS NULL))
+CREATE TABLE public.game_images (
+  id bigint NOT NULL DEFAULT nextval('game_images_id_seq'::regclass),
+  game_provider_id bigint NOT NULL,
+  image_key character varying,
+  url character varying NOT NULL,
+  mime_type character varying,
+  width integer,
+  height integer,
+  rank integer NOT NULL DEFAULT 0,
+  caption character varying,
+  variants json,
+  metadata json,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  media_id bigint,
+  storage_disk character varying,
+  storage_path character varying,
+  provider_item_id character varying,
+  video_game_source_id bigint,
+  provider_payload json,
+  small_url text,
+  super_url text,
+  platforms ARRAY,
+  canonical_media_id bigint,
+  video_game_id bigint,
+  CONSTRAINT game_images_pkey PRIMARY KEY (id),
+  CONSTRAINT game_images_video_game_source_id_fkey FOREIGN KEY (video_game_source_id) REFERENCES public.video_game_sources(id),
+  CONSTRAINT game_images_canonical_media_id_fkey FOREIGN KEY (canonical_media_id) REFERENCES public.canonical_media(id),
+  CONSTRAINT game_images_video_game_id_fk FOREIGN KEY (video_game_id) REFERENCES public.video_games(id)
 );
-CREATE TABLE IF NOT EXISTS offers (
-  id bigserial PRIMARY KEY,
-  sellable_id bigint NOT NULL REFERENCES sellables(id) ON DELETE CASCADE,
-  retailer_id bigint NOT NULL REFERENCES retailers(id) ON DELETE CASCADE,
-  sku text,
-  is_active boolean NOT NULL DEFAULT true,
-  metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE public.game_media (
+  video_game_id bigint NOT NULL,
+  source USER-DEFINED NOT NULL,
+  external_id text NOT NULL,
+  media_type USER-DEFINED NOT NULL,
+  url text NOT NULL CHECK (length(url) > 0),
+  cdn_url text,
+  width integer CHECK (width IS NULL OR width > 0),
+  height integer CHECK (height IS NULL OR height > 0),
+  size_bytes bigint CHECK (size_bytes IS NULL OR size_bytes > 0),
+  duration_seconds integer CHECK (duration_seconds IS NULL OR duration_seconds > 0),
+  mime_type text,
+  hash text,
+  provider_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  original_url text,
+  thumbnail_url text,
+  stream_url text,
+  poster_url text,
+  CONSTRAINT game_media_pkey PRIMARY KEY (video_game_id, source, external_id)
 );
-CREATE INDEX IF NOT EXISTS offers_active_idx ON offers (sellable_id) WHERE is_active;
--- Use a UNIQUE INDEX for expression-based uniqueness (constraints cannot include expressions)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_offers_sellable_retailer_sku
-  ON offers (sellable_id, retailer_id, (coalesce(sku,'')));
-
--- =============================
--- OFFER JURISDICTIONS
--- =============================
-CREATE TABLE IF NOT EXISTS offer_jurisdictions (
-  id bigserial PRIMARY KEY,
-  offer_id bigint NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-  jurisdiction_id bigint NOT NULL REFERENCES jurisdictions(id) ON DELETE CASCADE,
-  currency_id bigint NOT NULL REFERENCES currencies(id)
+CREATE TABLE public.game_videos (
+  id bigint NOT NULL DEFAULT nextval('game_videos_id_seq'::regclass),
+  game_provider_id bigint NOT NULL,
+  video_key character varying,
+  name character varying,
+  description text,
+  site_detail_url character varying,
+  embed_url character varying,
+  stream_url character varying,
+  duration_seconds integer,
+  published_at timestamp with time zone,
+  thumbnails json,
+  metadata json,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  media_id bigint,
+  storage_disk character varying,
+  storage_path character varying,
+  provider_item_id character varying,
+  video_game_source_id bigint,
+  provider_payload json,
+  canonical_media_id bigint,
+  CONSTRAINT game_videos_pkey PRIMARY KEY (id),
+  CONSTRAINT game_videos_video_game_source_id_fkey FOREIGN KEY (video_game_source_id) REFERENCES public.video_game_sources(id),
+  CONSTRAINT game_videos_canonical_media_id_fkey FOREIGN KEY (canonical_media_id) REFERENCES public.canonical_media(id)
 );
-DO $$ BEGIN IF NOT EXISTS (
-  SELECT 1 FROM pg_constraint WHERE conname='offer_jurisdictions_offer_jurisdiction_uq' AND conrelid='public.offer_jurisdictions'::regclass
-) THEN ALTER TABLE offer_jurisdictions ADD CONSTRAINT offer_jurisdictions_offer_jurisdiction_uq UNIQUE (offer_id, jurisdiction_id); END IF; END $$;
-
--- =============================
--- PROVIDER OBJECTS
--- =============================
-CREATE TABLE IF NOT EXISTS provider_items (
-  id bigserial PRIMARY KEY,
-  provider_id bigint NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-  external_id text,
-  kind text,
-  metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE public.jurisdictions (
+  id bigint NOT NULL DEFAULT nextval('jurisdictions_id_seq'::regclass),
+  country_id bigint NOT NULL,
+  region_code text,
+  region_key text DEFAULT COALESCE(region_code, ''::text),
+  CONSTRAINT jurisdictions_pkey PRIMARY KEY (id),
+  CONSTRAINT jurisdictions_country_id_fkey FOREIGN KEY (country_id) REFERENCES public.countries(id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_items_provider_external ON provider_items(provider_id, external_id);
-CREATE TABLE IF NOT EXISTS provider_offers (
-  id bigserial PRIMARY KEY,
-  provider_item_id bigint NOT NULL REFERENCES provider_items(id) ON DELETE CASCADE,
-  offer_id bigint REFERENCES offers(id) ON DELETE SET NULL,
-  metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE public.legacy_import_checkpoints (
+  source text NOT NULL,
+  last_legacy_id bigint NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT legacy_import_checkpoints_pkey PRIMARY KEY (source)
 );
-CREATE TABLE IF NOT EXISTS provider_ingest_runs (
-  id bigserial PRIMARY KEY,
-  provider_id bigint NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-  started_at timestamptz NOT NULL DEFAULT now(),
-  finished_at timestamptz,
-  status text,
-  stats jsonb
+CREATE TABLE public.platform_hardware_map (
+  platform_id bigint NOT NULL,
+  hardware_product_id bigint UNIQUE,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT platform_hardware_map_pkey PRIMARY KEY (platform_id),
+  CONSTRAINT platform_hardware_map_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES public.platforms(id)
 );
-
--- =============================
--- PRICES (PARTITIONED)
--- =============================
-CREATE TABLE IF NOT EXISTS prices (
-  id bigserial,
-  offer_jurisdiction_id bigint NOT NULL REFERENCES offer_jurisdictions(id) ON DELETE CASCADE,
-  provider_item_id bigint REFERENCES provider_items(id) ON DELETE SET NULL,
-  recorded_at timestamptz NOT NULL,
+CREATE TABLE public.platform_merge_audit (
+  audit_id bigint NOT NULL DEFAULT nextval('platform_merge_audit_audit_id_seq'::regclass),
+  old_id bigint NOT NULL UNIQUE,
+  new_id bigint NOT NULL,
+  old_code text NOT NULL,
+  new_code text NOT NULL,
+  merged_rows bigint,
+  merged_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT platform_merge_audit_pkey PRIMARY KEY (audit_id)
+);
+CREATE TABLE public.platforms (
+  id bigint NOT NULL DEFAULT nextval('platforms_id_seq'::regclass),
+  code text UNIQUE,
+  name text NOT NULL UNIQUE,
+  family text,
+  canonical_code text,
+  search_tsv tsvector,
+  CONSTRAINT platforms_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.platforms_backup (
+  backup_id bigint NOT NULL DEFAULT nextval('platforms_backup_backup_id_seq'::regclass),
+  original_id bigint NOT NULL,
+  name text NOT NULL,
+  code text,
+  canonical_code text,
+  backed_up_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT platforms_backup_pkey PRIMARY KEY (backup_id)
+);
+CREATE TABLE public.platforms_dedupe_map (
+  dupe_id bigint NOT NULL,
+  canonical_id bigint NOT NULL,
+  deduped_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT platforms_dedupe_map_pkey PRIMARY KEY (dupe_id)
+);
+CREATE TABLE public.prices (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
   amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
   tax_inclusive boolean NOT NULL,
   fx_minor_per_unit bigint,
   btc_sats_per_unit bigint,
   meta jsonb,
-  PRIMARY KEY (id, recorded_at)
-) PARTITION BY RANGE(recorded_at);
-CREATE INDEX IF NOT EXISTS prices_series_idx ON ONLY prices (offer_jurisdiction_id, recorded_at);
-CREATE INDEX IF NOT EXISTS prices_recorded_at_brin ON ONLY prices USING brin (recorded_at);
-CREATE OR REPLACE FUNCTION ensure_price_partition(ts timestamptz) RETURNS void LANGUAGE plpgsql AS $$ DECLARE start_month date := date_trunc('month', ts)::date; next_month date := (date_trunc('month', ts) + interval '1 month')::date; part_name text := format('prices_%s', to_char(start_month,'YYYY_MM')); BEGIN IF to_regclass(part_name) IS NULL THEN EXECUTE format('CREATE TABLE %I PARTITION OF prices FOR VALUES FROM (%L) TO (%L);', part_name, start_month, next_month); EXECUTE format('CREATE INDEX IF NOT EXISTS %I_oj_recorded_at ON %I (offer_jurisdiction_id, recorded_at);', part_name, part_name); EXECUTE format('CREATE INDEX IF NOT EXISTS %I_recorded_at ON %I (recorded_at);', part_name, part_name); EXECUTE format('CREATE INDEX IF NOT EXISTS %I_recorded_at_brin ON %I USING brin (recorded_at);', part_name, part_name); EXECUTE format('CREATE INDEX IF NOT EXISTS %I_oj_recorded_at_desc ON %I (offer_jurisdiction_id, recorded_at DESC) INCLUDE (amount_minor);', part_name, part_name); END IF; END $$;
-DO $$ DECLARE i int; base date := date_trunc('month', now())::date - interval '12 months'; future int := 18; BEGIN FOR i IN 0..future LOOP PERFORM ensure_price_partition((base + (i || ' months')::interval)::timestamptz); END LOOP; END $$;
-
--- =============================
--- CURRENT PRICE
--- =============================
-CREATE TABLE IF NOT EXISTS current_price (
-  offer_jurisdiction_id bigint PRIMARY KEY REFERENCES offer_jurisdictions(id) ON DELETE CASCADE,
-  amount_minor bigint NOT NULL,
-  recorded_at timestamptz NOT NULL
+  CONSTRAINT prices_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
 );
-
--- =============================
--- ALERTS
--- =============================
-CREATE TABLE IF NOT EXISTS alerts (
-  id bigserial PRIMARY KEY,
-  user_id bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  product_id bigint NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  region_code varchar(2) NOT NULL,
-  threshold_btc numeric(18,8) NOT NULL,
-  comparison_operator varchar(255) NOT NULL DEFAULT 'below',
-  channel varchar(255) NOT NULL,
-  is_active boolean NOT NULL DEFAULT true,
-  last_triggered_at timestamptz,
-  settings jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (comparison_operator IN ('below','above')),
-  CHECK (channel IN ('email','discord'))
+CREATE TABLE public.prices_2026_01 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_01_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
 );
-CREATE INDEX IF NOT EXISTS alerts_product_id_region_code_is_active_index
-  ON alerts (product_id, region_code, is_active);
-CREATE INDEX IF NOT EXISTS alerts_user_id_is_active_index
-  ON alerts (user_id, is_active);
-
--- =============================
--- GAME SOURCES & PROVIDERS
--- =============================
-CREATE TABLE IF NOT EXISTS video_game_sources (
-  id bigserial PRIMARY KEY,
-  video_game_id bigint REFERENCES video_games(id) ON DELETE SET NULL,
-  provider varchar(64),
-  provider_game_id varchar(128),
-  provider_slug varchar(128),
-  provider_hash varchar(64),
-  payload json,
-  links json,
-  media json,
-  synced_at timestamptz,
-  created_at timestamptz,
-  updated_at timestamptz,
-  provider_key varchar(64),
-  display_name varchar(255),
-  category varchar(64),
-  slug varchar(255),
-  metadata json
+CREATE TABLE public.prices_2026_02 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_02_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS video_game_sources_provider_key_uq
-  ON video_game_sources(provider_key);
-CREATE UNIQUE INDEX IF NOT EXISTS video_game_sources_provider_game_uq
-  ON video_game_sources(provider, provider_game_id);
-CREATE INDEX IF NOT EXISTS video_game_sources_slug_idx ON video_game_sources(slug);
-CREATE INDEX IF NOT EXISTS video_game_sources_video_game_provider_idx
-  ON video_game_sources(video_game_id, provider);
-
-CREATE TABLE IF NOT EXISTS game_providers (
-  id bigserial PRIMARY KEY,
-  provider_key varchar(64) NOT NULL,
-  name varchar(255),
-  slug varchar(255),
-  website_url varchar(255),
-  providable_type varchar(255),
-  providable_id bigint,
-  credentials json,
-  metadata json,
-  last_synced_at timestamptz,
-  refreshed_at timestamptz,
-  created_at timestamptz,
-  updated_at timestamptz,
-  video_game_source_id bigint REFERENCES video_game_sources(id) ON DELETE SET NULL
+CREATE TABLE public.prices_2026_03 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_03_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS game_providers_providable_provider_key_uq
-  ON game_providers(providable_type, providable_id, provider_key);
-CREATE INDEX IF NOT EXISTS game_providers_providable_idx
-  ON game_providers(providable_type, providable_id);
-CREATE INDEX IF NOT EXISTS game_providers_provider_key_idx ON game_providers(provider_key);
-CREATE INDEX IF NOT EXISTS game_providers_slug_idx ON game_providers(slug);
-CREATE INDEX IF NOT EXISTS game_providers_vgs_idx ON game_providers(video_game_source_id);
-
--- =============================
--- MEDIA TABLES
--- =============================
-CREATE TABLE IF NOT EXISTS game_images (
-  id bigserial PRIMARY KEY,
-  game_provider_id bigint NOT NULL REFERENCES game_providers(id) ON DELETE CASCADE,
-  image_key varchar(255),
-  url varchar(255) NOT NULL,
-  mime_type varchar(255),
-  width integer,
-  height integer,
-  rank integer NOT NULL DEFAULT 0,
-  caption varchar(255),
-  variants json,
-  metadata json,
-  created_at timestamptz,
-  updated_at timestamptz,
-  media_id bigint,
-  storage_disk varchar(255),
-  storage_path varchar(255),
-  provider_item_id varchar(255),
-  video_game_source_id bigint REFERENCES video_game_sources(id) ON DELETE SET NULL,
-  provider_payload json,
-  small_url text,
-  super_url text,
-  platforms text[]
+CREATE TABLE public.prices_2026_04 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_04_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS game_images_provider_image_key_uq
-  ON game_images(game_provider_id, image_key);
-CREATE INDEX IF NOT EXISTS game_images_provider_rank_idx
-  ON game_images(game_provider_id, rank);
-CREATE INDEX IF NOT EXISTS game_images_media_id_idx ON game_images(media_id);
-CREATE INDEX IF NOT EXISTS game_images_platforms_gin ON game_images USING gin (platforms);
-
-CREATE TABLE IF NOT EXISTS game_videos (
-  id bigserial PRIMARY KEY,
-  game_provider_id bigint NOT NULL REFERENCES game_providers(id) ON DELETE CASCADE,
-  video_key varchar(255),
-  name varchar(255),
-  description text,
-  site_detail_url varchar(255),
-  embed_url varchar(255),
-  stream_url varchar(255),
-  duration_seconds integer,
-  published_at timestamptz,
-  thumbnails json,
-  metadata json,
-  created_at timestamptz,
-  updated_at timestamptz,
-  media_id bigint,
-  storage_disk varchar(255),
-  storage_path varchar(255),
-  provider_item_id varchar(255),
-  video_game_source_id bigint REFERENCES video_game_sources(id) ON DELETE SET NULL,
-  provider_payload json
+CREATE TABLE public.prices_2026_05 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_05_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS game_videos_provider_video_key_uq
-  ON game_videos(game_provider_id, video_key);
-CREATE INDEX IF NOT EXISTS game_videos_provider_published_idx
-  ON game_videos(game_provider_id, published_at);
-CREATE INDEX IF NOT EXISTS game_videos_media_id_idx ON game_videos(media_id);
-
-CREATE TABLE IF NOT EXISTS provider_media_links (
-  id bigserial PRIMARY KEY,
-  provider_item_id bigint NOT NULL REFERENCES provider_items(id) ON DELETE CASCADE,
+CREATE TABLE public.prices_2026_06 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_06_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2026_07 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_07_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2026_08 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_08_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2026_09 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_09_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2026_10 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_10_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2026_11 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_11_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2026_12 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2026_12_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_01 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_01_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_02 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_02_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_03 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_03_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_04 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_04_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_05 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_05_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_06 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_06_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.prices_2027_07 (
+  id bigint NOT NULL DEFAULT nextval('prices_id_seq'::regclass),
+  offer_jurisdiction_id bigint NOT NULL,
+  provider_item_id bigint,
+  recorded_at timestamp with time zone NOT NULL,
+  amount_minor bigint NOT NULL CHECK (amount_minor >= 0),
+  tax_inclusive boolean NOT NULL,
+  fx_minor_per_unit bigint,
+  btc_sats_per_unit bigint,
+  meta jsonb,
+  CONSTRAINT prices_2027_07_pkey PRIMARY KEY (id, recorded_at),
+  CONSTRAINT prices_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id)
+);
+CREATE TABLE public.products (
+  id bigint NOT NULL DEFAULT nextval('products_id_seq'::regclass),
+  slug USER-DEFINED NOT NULL UNIQUE,
+  name text NOT NULL,
+  category text NOT NULL DEFAULT 'software'::text CHECK (category = ANY (ARRAY['software'::text, 'hardware'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  software_children_count integer NOT NULL DEFAULT 0,
+  hardware_children_count integer NOT NULL DEFAULT 0,
+  search_tsv tsvector,
+  CONSTRAINT products_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.provider_items (
+  id bigint NOT NULL DEFAULT nextval('provider_items_id_seq'::regclass),
+  provider_id bigint NOT NULL,
+  external_id text,
+  kind text,
+  metadata jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  locked_by text,
+  locked_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  CONSTRAINT provider_items_pkey PRIMARY KEY (id),
+  CONSTRAINT provider_items_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES public.providers(id)
+);
+CREATE TABLE public.provider_media_links (
+  id bigint NOT NULL DEFAULT nextval('provider_media_links_id_seq'::regclass),
+  provider_item_id bigint NOT NULL,
   media_id bigint,
   url text,
-  video_game_id bigint REFERENCES video_games(id) ON DELETE SET NULL,
+  video_game_id bigint,
   media_type text,
   title text,
   role text,
   source text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (media_id IS NOT NULL OR url IS NOT NULL)
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  kind USER-DEFINED NOT NULL DEFAULT 'image'::media_kind,
+  provider_id bigint,
+  CONSTRAINT provider_media_links_pkey PRIMARY KEY (id),
+  CONSTRAINT provider_media_links_provider_item_id_fkey FOREIGN KEY (provider_item_id) REFERENCES public.provider_items(id),
+  CONSTRAINT provider_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES public.video_games(id),
+  CONSTRAINT provider_media_links_provider_fk FOREIGN KEY (provider_id) REFERENCES public.providers(id)
 );
-CREATE INDEX IF NOT EXISTS provider_media_links_item_idx ON provider_media_links(provider_item_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_media_links_item_url ON provider_media_links(provider_item_id,url);
-CREATE INDEX IF NOT EXISTS provider_media_links_video_game_idx ON provider_media_links(video_game_id);
-CREATE INDEX IF NOT EXISTS provider_media_links_type_role_idx ON provider_media_links(media_type,role);
-CREATE INDEX IF NOT EXISTS provider_media_links_source_idx ON provider_media_links(source);
-CREATE INDEX IF NOT EXISTS idx_provider_media_links_vg_type ON provider_media_links(video_game_id,media_type);
-
--- =============================
--- RATINGS & TITLE SOURCES
--- =============================
-CREATE TABLE IF NOT EXISTS video_game_ratings_by_locale (
-  id bigserial PRIMARY KEY,
-  video_game_id bigint NOT NULL REFERENCES video_games(id) ON DELETE CASCADE,
-  locale text NOT NULL,
-  average_rating numeric,
+CREATE TABLE public.provider_usage_unified (
+  provider character varying NOT NULL,
+  total_calls bigint NOT NULL DEFAULT 0,
+  daily_calls integer NOT NULL DEFAULT 0,
+  daily_window date,
+  last_called_at timestamp without time zone,
+  breakdown jsonb DEFAULT '{}'::jsonb,
+  stats jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp without time zone DEFAULT now(),
+  updated_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT provider_usage_unified_pkey PRIMARY KEY (provider)
+);
+CREATE TABLE public.providers (
+  id bigint NOT NULL DEFAULT nextval('providers_id_seq'::regclass),
+  slug USER-DEFINED UNIQUE,
+  name text NOT NULL,
+  kind text,
+  api_source text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone,
+  legacy_source_id bigint,
+  search_tsv tsvector,
+  CONSTRAINT providers_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.retailer_credentials_audit (
+  id bigint NOT NULL DEFAULT nextval('retailer_credentials_audit_id_seq'::regclass),
+  retailer_provider_id bigint NOT NULL,
+  changed_by text,
+  changed_at timestamp with time zone NOT NULL DEFAULT now(),
+  operation text NOT NULL,
+  cred_hash text,
+  CONSTRAINT retailer_credentials_audit_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.retailer_providers (
+  id bigint NOT NULL DEFAULT nextval('retailer_providers_id_seq'::regclass),
+  retailer_id bigint NOT NULL,
+  provider_id bigint NOT NULL,
+  credentials_enc bytea,
+  updated_at timestamp with time zone,
+  CONSTRAINT retailer_providers_pkey PRIMARY KEY (id),
+  CONSTRAINT retailer_providers_retailer_id_fkey FOREIGN KEY (retailer_id) REFERENCES public.retailers(id),
+  CONSTRAINT retailer_providers_provider_id_fkey FOREIGN KEY (provider_id) REFERENCES public.providers(id)
+);
+CREATE TABLE public.retailer_video_game_sources (
+  id bigint NOT NULL DEFAULT nextval('retailer_video_game_sources_id_seq'::regclass),
+  retailer_id bigint NOT NULL,
+  video_game_source_id bigint NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  credentials jsonb NOT NULL DEFAULT '{}'::jsonb,
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  jurisdiction_scope ARRAY DEFAULT '{}'::text[],
+  last_synced_at timestamp with time zone,
+  next_sync_at timestamp with time zone,
+  sync_status text,
+  sync_cursor text,
+  sync_error jsonb,
+  rate_limit_per_minute integer,
+  rate_limit_burst integer,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_enabled boolean NOT NULL DEFAULT true,
+  priority smallint NOT NULL DEFAULT 100,
+  CONSTRAINT retailer_video_game_sources_pkey PRIMARY KEY (id),
+  CONSTRAINT retailer_video_game_sources_retailer_id_fkey FOREIGN KEY (retailer_id) REFERENCES public.retailers(id),
+  CONSTRAINT retailer_video_game_sources_video_game_source_id_fkey FOREIGN KEY (video_game_source_id) REFERENCES public.video_game_sources(id)
+);
+CREATE TABLE public.retailers (
+  id bigint NOT NULL DEFAULT nextval('retailers_id_seq'::regclass),
+  slug USER-DEFINED UNIQUE,
+  name text NOT NULL,
+  search_tsv tsvector,
+  CONSTRAINT retailers_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.users (
+  id bigint NOT NULL DEFAULT nextval('users_id_seq'::regclass),
+  email USER-DEFINED NOT NULL UNIQUE,
+  name text,
+  timezone text NOT NULL DEFAULT 'UTC'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  auth_id uuid,
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.vg_source_media_links (
+  id bigint NOT NULL DEFAULT nextval('vg_source_media_links_id_seq'::regclass),
+  video_game_source_id bigint NOT NULL,
+  media_id bigint,
+  url text,
+  video_game_id bigint,
+  media_type text,
+  title text,
+  role text,
+  source text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT vg_source_media_links_pkey PRIMARY KEY (id),
+  CONSTRAINT vg_source_media_links_video_game_source_id_fkey FOREIGN KEY (video_game_source_id) REFERENCES public.video_game_sources(id),
+  CONSTRAINT vg_source_media_links_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES public.video_games(id)
+);
+CREATE TABLE public.video_game_source_sync_states (
+  id bigint NOT NULL DEFAULT nextval('video_game_source_sync_states_id_seq'::regclass),
+  video_game_source_id bigint NOT NULL,
+  retailer_video_game_source_id bigint,
+  sync_kind text NOT NULL,
+  last_synced_at timestamp with time zone,
+  next_sync_at timestamp with time zone,
+  sync_status text NOT NULL DEFAULT 'pending'::text,
+  sync_details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  error_details jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT video_game_source_sync_states_pkey PRIMARY KEY (id),
+  CONSTRAINT video_game_source_sync_states_video_game_source_id_fkey FOREIGN KEY (video_game_source_id) REFERENCES public.video_game_sources(id),
+  CONSTRAINT video_game_source_sync_states_retailer_video_game_source_i_fkey FOREIGN KEY (retailer_video_game_source_id) REFERENCES public.retailer_video_game_sources(id)
+);
+CREATE TABLE public.video_game_sources (
+  id bigint NOT NULL DEFAULT nextval('video_game_sources_id_seq'::regclass),
+  video_game_id bigint,
+  provider character varying,
+  provider_game_id character varying,
+  provider_slug character varying,
+  provider_hash character varying,
+  payload json,
+  links json,
+  media json,
+  synced_at timestamp with time zone,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  provider_key character varying NOT NULL,
+  display_name character varying,
+  category character varying,
+  slug character varying,
+  metadata json,
+  kind text,
+  base_url text,
+  website_url text,
+  docs_url text,
+  auth_mode text,
+  auth_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_active boolean NOT NULL DEFAULT true,
+  rate_limit_per_minute integer,
+  rate_limit_burst integer,
+  video_game_ids jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(video_game_ids) = 'array'::text),
+  CONSTRAINT video_game_sources_pkey PRIMARY KEY (id),
+  CONSTRAINT video_game_sources_video_game_id_fkey FOREIGN KEY (video_game_id) REFERENCES public.video_games(id)
+);
+CREATE TABLE public.video_game_title_dedupe_audit (
+  winner_id bigint NOT NULL,
+  loser_id bigint NOT NULL,
+  loser_video_game_id bigint,
+  loser_title text,
+  loser_normalized_title text,
+  loser_created_at timestamp with time zone,
+  logged_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT video_game_title_dedupe_audit_pkey PRIMARY KEY (winner_id, loser_id),
+  CONSTRAINT video_game_title_dedupe_audit_winner_id_fkey FOREIGN KEY (winner_id) REFERENCES public.video_game_titles(id)
+);
+CREATE TABLE public.video_game_titles (
+  id bigint NOT NULL DEFAULT nextval('video_game_titles_id_seq'::regclass),
+  product_id bigint NOT NULL,
+  video_game_id bigint,
+  title text NOT NULL,
+  normalized_title text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  search_vector tsvector DEFAULT to_tsvector('english'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(normalized_title, ''::text))),
+  video_game_ids jsonb CHECK (video_game_ids IS NULL OR jsonb_typeof(video_game_ids) = 'array'::text),
+  search_tsv tsvector,
+  source_ids jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(source_ids) = 'array'::text),
+  aliases jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(aliases) = 'array'::text),
+  trailer_url text,
+  gameplay_url text,
+  CONSTRAINT video_game_titles_pkey PRIMARY KEY (id),
+  CONSTRAINT video_game_titles_product_id_fk FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.video_games (
+  id bigint NOT NULL DEFAULT nextval('video_games_id_seq'::regclass),
+  title_id bigint NOT NULL,
+  platform_id bigint NOT NULL,
+  edition text,
+  sellable_id bigint,
+  slug USER-DEFINED UNIQUE,
+  release_date date,
+  metadata jsonb,
+  average_rating real,
   rating_count bigint,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (video_game_id, locale)
+  rating_updated_at timestamp with time zone,
+  genres ARRAY,
+  display_title text,
+  developer text,
+  region_codes ARRAY,
+  popularity_score numeric NOT NULL DEFAULT 0,
+  rating numeric NOT NULL DEFAULT 0,
+  synopsis text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  regional_prices jsonb NOT NULL DEFAULT '[]'::jsonb,
+  search_tsv tsvector,
+  CONSTRAINT video_games_pkey PRIMARY KEY (id),
+  CONSTRAINT video_games_title_id_fk FOREIGN KEY (title_id) REFERENCES public.video_game_titles(id),
+  CONSTRAINT video_games_platform_id_fkey FOREIGN KEY (platform_id) REFERENCES public.platforms(id)
 );
-CREATE TABLE IF NOT EXISTS video_game_title_sources (
-  id bigserial PRIMARY KEY,
-  video_game_title_id bigint NOT NULL REFERENCES video_game_titles(id) ON DELETE CASCADE,
-  source text NOT NULL,
-  source_id text,
-  metadata jsonb,
-  fetched_at timestamptz
+CREATE TABLE public.video_games_dedupe_audit (
+  winner_id bigint NOT NULL,
+  loser_id bigint NOT NULL,
+  loser_title_id bigint,
+  loser_platform_id bigint,
+  loser_edition text,
+  loser_created_at timestamp with time zone,
+  logged_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT video_games_dedupe_audit_pkey PRIMARY KEY (winner_id, loser_id),
+  CONSTRAINT video_games_dedupe_audit_winner_id_fkey FOREIGN KEY (winner_id) REFERENCES public.video_games(id)
 );
-DO $$ BEGIN IF NOT EXISTS (
-  SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE c.relkind='i' AND c.relname='uq_vg_title_sources_vid_source_sid' AND n.nspname='public'
-) THEN CREATE UNIQUE INDEX uq_vg_title_sources_vid_source_sid ON video_game_title_sources (video_game_title_id, source, coalesce(source_id,'')); END IF; END $$;
-
-CREATE OR REPLACE VIEW video_games_enriched AS
-SELECT
-  vg.id,
-  vgt.product_id AS product_id,
-  vgt.id AS title_id,
-  vgt.title AS canonical_title,
-  COALESCE(vg.display_title, vgt.title) AS source_title,
-  vg.slug,
-  vgt.normalized_title AS normalized_title,
-  vgt.normalized_title AS title_normalized,
-  NULL::text AS locale,
-  NULL::text AS genre,
-  vg.genres,
-  NULL::text[] AS platform_codes,
-  vg.region_codes,
-  NULL::jsonb AS external_ids,
-  NULL::jsonb AS external_links,
-  vg.release_date,
-  vg.developer,
-  vg.metadata,
-  vg.created_at,
-  vg.updated_at,
-  NULL::timestamptz AS last_synced_at
-FROM video_games vg
-LEFT JOIN video_game_titles vgt ON vgt.id = vg.title_id;
-
--- =============================
--- EXCHANGE RATES (for FX enrichment)
--- =============================
-CREATE TABLE IF NOT EXISTS exchange_rates (
-  id bigserial PRIMARY KEY,
-  base_currency text NOT NULL,
-  quote_currency text NOT NULL,
-  rate double precision NOT NULL,
-  provider text NOT NULL,
-  fetched_at timestamptz NOT NULL,
-  metadata jsonb,
-  UNIQUE (base_currency, quote_currency, provider)
-);
-CREATE INDEX IF NOT EXISTS idx_exchange_rates_lookup ON exchange_rates (base_currency, quote_currency, provider, fetched_at DESC);
-
--- Ensure providers.kind column exists if migration applied before addition
-DO $$ BEGIN
-IF NOT EXISTS (
-  SELECT 1 FROM information_schema.columns
-  WHERE table_schema='public' AND table_name='providers' AND column_name='kind'
-) THEN
-  ALTER TABLE providers ADD COLUMN kind text;
-END IF; END $$;

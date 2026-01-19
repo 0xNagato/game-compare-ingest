@@ -10,12 +10,8 @@ async fn main() -> Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let database_url = match std::env::var("DATABASE_URL") {
-        Ok(v) => v,
-        Err(_) => {
-            std::env::var("SUPABASE_DB_URL").expect("DATABASE_URL or SUPABASE_DB_URL must be set")
-        }
-    };
+    let database_url = i_miss_rust::util::env::db_url_prefer_session()
+        .expect("Set SUPABASE_IPV6_DB / SUPABASE_DB_URL / DATABASE_URL / DB_URL");
     println!("[steam_once] connecting to DB (env provided)");
     let max_conns: u32 = std::env::var("DB_MAX_CONNS")
         .ok()

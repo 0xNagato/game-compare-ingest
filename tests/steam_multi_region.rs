@@ -11,12 +11,21 @@ use i_miss_rust::database_ops::steam::provider::SteamProvider;
 // Integration test for multi-region Steam ingest.
 // This test exercises a single paid app (Cyberpunk 2077 appid 1091500) across two regions (US, GB)
 // and validates that domain entities (provider_item, offers, offer_jurisdictions, optional prices) are created.
-// NOTE: Relies on live Steam API; marked #[ignore] to avoid mandatory CI flakiness. Run explicitly when needed.
-// To execute: cargo test --test steam_multi_region -- --ignored --nocapture
+// NOTE: Relies on a live DB + Steam API.
+// - Skipped unless RUN_DB_TESTS=1 is set.
+// - Marked #[ignore] to avoid mandatory CI flakiness; run explicitly when needed.
+// To execute:
+//   RUN_DB_TESTS=1 cargo test --test steam_multi_region -- --ignored --nocapture
 
 #[tokio::test]
+#[ignore]
 
 async fn steam_multi_region_ingest_minimal() -> Result<()> {
+    if std::env::var("RUN_DB_TESTS").ok().as_deref() != Some("1") {
+        eprintln!("[steam_test] skipping (set RUN_DB_TESTS=1 to enable)");
+        return Ok(());
+    }
+
     dotenv::dotenv().ok();
 
     // Ensure required env vars for Steam ingestion (test isolated, deterministic)

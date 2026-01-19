@@ -1,0 +1,178 @@
+[
+  {
+    "query_id": "query_001",
+    "query_type": "api_price_comparison",
+    "query": "Compare prices for Elden Ring across all regions",
+    "response_status": 503,
+    "error": "API server not running - unable to connect to http://127.0.0.1:8080",
+    "success": false,
+    "timestamp": 1735606800.0,
+    "note": "Simulated response - API server needs to be started for live data"
+  },
+  {
+    "query_id": "query_002",
+    "query_type": "api_price_comparison",
+    "query": "Get current price for God of War Ragnarök in US",
+    "response_data": {
+      "status": "success",
+      "data": {
+        "product_id": "god-of-war-ragnarok",
+        "region": "US",
+        "current_price": {
+          "amount_minor": 6999,
+          "currency": "USD",
+          "tax_inclusive": true,
+          "recorded_at": "2025-12-30T00:00:00Z"
+        }
+      }
+    },
+    "response_time_ms": 45.2,
+    "success": true,
+    "timestamp": 1735606801.0,
+    "note": "Simulated successful response"
+  },
+  {
+    "query_id": "query_003",
+    "query_type": "provider_ingestion",
+    "query": "Ingest PlayStation Store prices for Horizon Forbidden West",
+    "provider": "playstation_store",
+    "product_id": "PPSA01521_00",
+    "exit_code": 0,
+    "stdout": "INFO: PlayStation Store ingestion started\\nINFO: Fetched product PPSA01521_00\\nINFO: Price updated: $69.99 USD\\nINFO: Ingestion complete",
+    "stderr": "",
+    "success": true,
+    "timestamp": 1735606802.0,
+    "items_processed": 1,
+    "note": "Simulated successful ingestion"
+  },
+  {
+    "query_id": "query_004",
+    "query_type": "provider_ingestion",
+    "query": "Ingest Xbox Store pricing for Halo Infinite",
+    "provider": "xbox_store",
+    "product_id": "9PP5G1F0C2B6",
+    "exit_code": 0,
+    "stdout": "INFO: Xbox Store ingestion started\\nINFO: Fetched product 9PP5G1F0C2B6\\nINFO: Price updated: $59.99 USD\\nINFO: Ingestion complete",
+    "stderr": "",
+    "success": true,
+    "timestamp": 1735606803.0,
+    "items_processed": 1,
+    "note": "Simulated successful ingestion"
+  },
+  {
+    "query_id": "query_005",
+    "query_type": "data_normalization",
+    "query": "Normalize PlayStation 5 console pricing across providers",
+    "validation_result": {
+      "product_name": "PlayStation 5",
+      "normalized_title": "playstation-5",
+      "providers_matched": ["playstation_store", "steam", "xbox_store"],
+      "price_variance": 0.02,
+      "data_quality_score": 0.98
+    },
+    "success": true,
+    "timestamp": 1735606804.0,
+    "note": "Simulated validation result"
+  },
+  {
+    "query_id": "query_006",
+    "query_type": "api_product_search",
+    "query": "Search for products matching 'Final Fantasy'",
+    "response_data": {
+      "status": "success",
+      "data": {
+        "products": [
+          {
+            "id": "final-fantasy-vii-remake",
+            "name": "Final Fantasy VII Remake",
+            "platform": "PS5"
+          },
+          {
+            "id": "final-fantasy-xvi",
+            "name": "Final Fantasy XVI",
+            "platform": "PS5"
+          }
+        ],
+        "total": 2,
+        "per_page": 20
+      }
+    },
+    "response_time_ms": 32.1,
+    "success": true,
+    "timestamp": 1735606805.0,
+    "note": "Simulated search results"
+  },
+  {
+    "query_id": "query_007",
+    "query_type": "cross_provider_reconciliation",
+    "query": "Reconcile Spider-Man data from Giant Bomb and IGDB",
+    "validation_result": {
+      "product_name": "Marvel's Spider-Man",
+      "providers": ["giant_bomb", "igdb"],
+      "reconciliation_status": "successful",
+      "fields_matched": {
+        "title": true,
+        "platform": true,
+        "release_date": true,
+        "rating": true
+      },
+      "confidence_score": 0.95,
+      "discrepancies": []
+    },
+    "success": true,
+    "timestamp": 1735606806.0,
+    "note": "Simulated reconciliation result"
+  },
+  {
+    "query_id": "query_008",
+    "query_type": "api_map_choropleth",
+    "query": "Get price map for Resident Evil 4 Remake",
+    "response_data": {
+      "status": "success",
+      "data": {
+        "product_id": "resident-evil-4-remake",
+        "stat": "mean_price",
+        "window": "30d",
+        "regions": [
+          {"code": "US", "value": 5999},
+          {"code": "GB", "value": 5499},
+          {"code": "JP", "value": 7800}
+        ]
+      }
+    },
+    "response_time_ms": 58.3,
+    "success": true,
+    "timestamp": 1735606807.0,
+    "note": "Simulated choropleth data"
+  },
+  {
+    "query_id": "query_009",
+    "query_type": "provider_ingestion",
+    "query": "Ingest Steam pricing for Counter-Strike 2",
+    "provider": "steam",
+    "product_id": "730",
+    "exit_code": 0,
+    "stdout": "INFO: Steam ingestion started\\nINFO: Fetched product 730\\nINFO: Price updated: Free-to-Play\\nINFO: Ingestion complete",
+    "stderr": "",
+    "success": true,
+    "timestamp": 1735606808.0,
+    "items_processed": 1,
+    "note": "Simulated successful ingestion"
+  },
+  {
+    "query_id": "query_010",
+    "query_type": "currency_conversion",
+    "query": "Convert £59.99 GBP to USD equivalent for price comparison",
+    "validation_result": {
+      "from_currency": "GBP",
+      "to_currency": "USD",
+      "amount_minor": 5999,
+      "converted_amount_minor": 7549,
+      "exchange_rate": 1.2584,
+      "conversion_timestamp": "2025-12-30T00:00:00Z"
+    },
+    "success": true,
+    "timestamp": 1735606809.0,
+    "note": "Simulated currency conversion"
+  }
+]

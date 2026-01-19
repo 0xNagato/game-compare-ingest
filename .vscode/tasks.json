@@ -100,6 +100,13 @@
 			"group": "build"
 		},
 		{
+			"label": "apply-0530",
+			"type": "shell",
+			"command": "MIG_FILE=migrations/0530_video_game_titles_uid_and_video_game_ids.sql RUST_LOG=info cargo run --bin migrate_one",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
 			"label": "run-import-sqlite",
 			"type": "shell",
 			"command": "RUST_LOG=info cargo run --bin import_sqlite",
@@ -452,6 +459,52 @@
 			"type": "shell",
 			"command": "RUST_BACKTRACE=full SUPABASE_IPV6_DB=\"postgresql://postgres:Osmgx7MGGEYMeyuQ@[2a05:d018:135e:160e:3efa:5995:753b:a4fb]:5432/postgres?sslmode=require\" PS_STORE_REGIONS=\"en-us\" PS_MAX_PAGES=1 PS_PAGE_SIZE=50 RUST_LOG=debug cargo run --bin gc -- ps-prices --regions en-us --page-size 50 --max-pages 1 2>&1 | tee ps-debug.log",
 			"isBackground": false
+		},
+		{
+			"label": "rawg-smoke",
+			"type": "shell",
+			"command": "RAWG_YEAR_MIN=2025 RAWG_YEAR_MAX=2025 RAWG_PAGE_SIZE=5 RAWG_MAX_PAGES=1 RAWG_MAX_ITEMS=2 RAWG_REQS_PER_MIN=30 RAWG_FETCH_DETAILS=0 RUST_LOG=info cargo run --bin ingest -- run --only rawg --no-alerts",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "psql-video-game-sources-columns",
+			"type": "shell",
+			"command": "psql \"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05:d018:135e:160e:3efa:5995:753b:a4fb\" -c \"select column_name, data_type from information_schema.columns where table_schema='public' and table_name='video_game_sources' order by ordinal_position;\"",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "psql-video-game-sources-keys",
+			"type": "shell",
+			"command": "psql \"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05:d018:135e:160e:3efa:5995:753b:a4fb\" -c \"select id, provider_key, slug from public.video_game_sources order by id;\"",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "psql-video-game-sources-keys-agg",
+			"type": "shell",
+			"command": "psql \"postgresql://postgres:Osmgx7MGGEYMeyuQ@db.mpdxojdqjlmrsjdxustc.supabase.co:5432/postgres?sslmode=require&hostaddr=2a05:d018:135e:160e:3efa:5995:753b:a4fb\" -c \"select array_agg(provider_key order by id) as provider_keys, array_agg(slug order by id) as slugs from public.video_game_sources;\"",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "apply-0530",
+			"type": "shell",
+			"command": "MIG_FILE=migrations/0530_video_game_titles_uid_and_video_game_ids.sql cargo run --bin migrate_one",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "capture-cargo-check",
+			"type": "shell",
+			"command": "cd /Users/lowkey/Desktop/i-miss-rust && cargo check --bin import_sqlite 2>&1 | tee /tmp/import_check.log"
+		},
+		{
+			"label": "capture-cargo-check",
+			"type": "shell",
+			"command": "cd /Users/lowkey/Desktop/i-miss-rust && cargo check --bin import_sqlite 2>&1 | tee tmp_logs/import_check.log"
 		}
 	]
 }

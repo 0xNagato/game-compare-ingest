@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
     Row,
-    postgres::{PgConnectOptions, PgPoolOptions},
 };
 use std::str::FromStr;
 
@@ -11,7 +11,13 @@ async fn main() -> Result<()> {
     let _ = dotenv::dotenv();
     let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL not set")?;
     // Disable statement cache for PgBouncer compatibility
-    let connect_opts = PgConnectOptions::from_str(&database_url)?.statement_cache_capacity(0);
+    let mut connect_opts = PgConnectOptions::from_str(&database_url)?.statement_cache_capacity(0);
+
+    // Ensure TLS is enabled when DSN contains sslmode=require
+    if database_url.contains("sslmode=require") && !database_url.contains("sslmode=disable") {
+        connect_opts = connect_opts.ssl_mode(PgSslMode::Require);
+    }
+
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect_with(connect_opts)

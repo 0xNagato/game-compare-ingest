@@ -1,13 +1,16 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::Utc;
-use reqwest::{Client, header};
+use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 use tracing::{info, warn};
+
+const NEXARDA_PROVIDER_KEY: &str = "nexarda";
+const NEXARDA_CATALOG_PROVIDER_KEY: &str = "nexarda-cat";
 
 /// Rust port of the PHP NexardaProvider.
 ///
@@ -650,15 +653,20 @@ impl NexardaProvider {
     ) -> Result<usize> {
         use crate::database_ops::db::PriceRow;
         use crate::database_ops::ingest_providers::{
-            PostIngestSummary, ProviderEntityCache, ensure_country, ensure_currency,
-            ensure_national_jurisdiction, ensure_platform, ensure_provider,
-            ensure_provider_media_links_with_meta, ensure_retailer, ingest_prices,
-            link_provider_offer,
+            ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_platform,
+            ensure_provider, ensure_retailer, ensure_vg_source_media_links_with_meta,
+            ingest_prices, link_provider_offer, update_video_game_display_title_and_region,
+            PostIngestSummary, ProviderEntityCache,
         };
         use chrono::Utc;
 
-        let provider_id =
-            ensure_provider(db, "nexarda", "pricing_catalog", Some("nexarda")).await?;
+        let provider_id = ensure_provider(
+            db,
+            "nexarda",
+            "pricing_catalog",
+            Some(NEXARDA_PROVIDER_KEY),
+        )
+        .await?;
         let mut entity_cache = ProviderEntityCache::new(db.clone());
         let mut post_summary = PostIngestSummary::default();
 
@@ -685,11 +693,18 @@ impl NexardaProvider {
             let title_id = entity_cache
                 .ensure_video_game_title(product_id, &gd.game.title, Some(&slug))
                 .await?;
+            // Laravel schema: use product_id directly
             let vg_id = entity_cache
-                .ensure_video_game(title_id, platform_id, None)
+                .ensure_video_game_for_product_laravel(
+                    product_id,
+                    &gd.game.title,
+                    Some(&slug),
+                    None,
+                    NEXARDA_PROVIDER_KEY,
+                )
                 .await?;
 
-            let mut last_provider_item_id: Option<i64> = None;
+            let mut last_video_game_source_id: Option<i64> = None;
             let mut price_rows: Vec<PriceRow> = Vec::new();
             for deal in gd.deals.iter() {
                 // ensure currency / country / jurisdiction
@@ -724,7 +739,7 @@ impl NexardaProvider {
                     .ensure_offer_jurisdiction(offer_id, juris_id, currency_id)
                     .await?;
                 // provider item + linking (deal_id acts as external id)
-                let provider_item_id = entity_cache
+                let video_game_source_id = entity_cache
                     .ensure_provider_item(
                         provider_id,
                         &deal.deal_id,
@@ -732,16 +747,16 @@ impl NexardaProvider {
                         true,
                     )
                     .await?;
-                link_provider_offer(db, provider_item_id, offer_id, Some(0.9)).await?;
-                last_provider_item_id = Some(provider_item_id);
-                post_summary.record_provider_item(provider_item_id);
+                link_provider_offer(db, video_game_source_id, offer_id, Some(0.9)).await?;
+                last_video_game_source_id = Some(video_game_source_id);
+                post_summary.record_provider_item(video_game_source_id);
 
                 let recorded_at = Utc::now();
                 // store both sale and normal if distinct
                 let sale_minor = (deal.sale_price * 100.0).round() as i64; // assume 2dp for now
                 price_rows.push(PriceRow {
                     offer_jurisdiction_id: oj_id,
-                    provider_item_id: Some(provider_item_id),
+                    video_game_source_id: Some(video_game_source_id),
                     recorded_at,
                     amount_minor: sale_minor,
                     tax_inclusive: true,
@@ -753,7 +768,7 @@ impl NexardaProvider {
                     let normal_minor = (deal.normal_price * 100.0).round() as i64;
                     price_rows.push(PriceRow {
                         offer_jurisdiction_id: oj_id,
-                        provider_item_id: Some(provider_item_id),
+                        video_game_source_id: Some(video_game_source_id),
                         recorded_at,
                         amount_minor: normal_minor,
                         tax_inclusive: true,
@@ -776,18 +791,11 @@ impl NexardaProvider {
                 .map(|d| d.region_code.to_ascii_uppercase())
                 .collect();
             for rc in regions.iter() {
-                let _ = sqlx
-                    ::query(
-                        "UPDATE video_games SET display_title = COALESCE(display_title,$1), region_codes = CASE WHEN region_codes IS NULL THEN ARRAY[$2]::text[] ELSE (SELECT ARRAY(SELECT DISTINCT UNNEST(region_codes || ARRAY[$2]))) END WHERE id=$3"
-                    )
-                    .persistent(false)
-                    .bind(&gd.game.title)
-                    .bind(rc)
-                    .bind(vg_id)
-                    .execute(&db.pool).await;
+                let _ =
+                    update_video_game_display_title_and_region(db, vg_id, &gd.game.title, rc).await;
             }
             // Media ingestion (cover/banner from metadata)
-            if let Some(pid) = last_provider_item_id {
+            if let Some(pid) = last_video_game_source_id {
                 let mut media_tuples: Vec<(
                     String,
                     Option<String>,
@@ -812,7 +820,7 @@ impl NexardaProvider {
                 }
                 if !media_tuples.is_empty() {
                     let meta = serde_json::json!({"source":"nexarda","regions": regions});
-                    let _ = ensure_provider_media_links_with_meta(
+                    let _ = ensure_vg_source_media_links_with_meta(
                         db,
                         pid,
                         Some(vg_id),
@@ -856,8 +864,9 @@ impl NexardaProvider {
     ) -> anyhow::Result<usize> {
         use crate::database_ops::db::PriceRow;
         use crate::database_ops::ingest_providers::{
-            ProviderEntityCache, ensure_country, ensure_currency, ensure_national_jurisdiction,
-            ensure_platform, ensure_provider, ensure_retailer, ingest_prices, link_provider_offer,
+            ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_platform,
+            ensure_provider, ensure_retailer, ingest_prices, link_provider_offer,
+            ProviderEntityCache,
         };
         use chrono::Utc;
         use serde::Deserialize;
@@ -895,8 +904,13 @@ impl NexardaProvider {
         }
         info!(games = cat.games.len(), path=%path, "nexarda catalogue loaded");
 
-        let provider_id =
-            ensure_provider(db, "nexarda_catalogue", "catalog", Some("nexarda-cat")).await?;
+        let provider_id = ensure_provider(
+            db,
+            "nexarda_catalogue",
+            "catalog",
+            Some(NEXARDA_CATALOG_PROVIDER_KEY),
+        )
+        .await?;
         let retailer_id = ensure_retailer(db, "NEXARDA Catalogue", Some("nexarda-cat")).await?;
         let mut entity_cache = ProviderEntityCache::new(db.clone());
 
@@ -943,8 +957,15 @@ impl NexardaProvider {
                 let title_id = entity_cache
                     .ensure_video_game_title(product_id, &name, Some(&slug))
                     .await?;
+                // Laravel schema: use product_id directly
                 let _vg_id = entity_cache
-                    .ensure_video_game(title_id, platform_id, None)
+                    .ensure_video_game_for_product_laravel(
+                        product_id,
+                        &name,
+                        Some(&slug),
+                        None,
+                        NEXARDA_CATALOG_PROVIDER_KEY,
+                    )
                     .await?;
                 let _pi = entity_cache
                     .ensure_provider_item(
@@ -992,7 +1013,7 @@ impl NexardaProvider {
             let offer_id = entity_cache
                 .ensure_offer(sellable_id, retailer_id, None)
                 .await?;
-            let provider_item_id = entity_cache
+            let video_game_source_id = entity_cache
                 .ensure_provider_item(
                     provider_id,
                     &format!("nexarda:{}", g.id),
@@ -1000,7 +1021,7 @@ impl NexardaProvider {
                     true,
                 )
                 .await?;
-            link_provider_offer(db, provider_item_id, offer_id, Some(0.9)).await?;
+            link_provider_offer(db, video_game_source_id, offer_id, Some(0.9)).await?;
 
             for (ccy_raw, price_val) in &g.prices {
                 let ccy = ccy_raw.to_ascii_uppercase();
@@ -1022,7 +1043,7 @@ impl NexardaProvider {
                 let amount_minor = (price_f * (10f64).powi(minor_unit as i32)).round() as i64;
                 price_rows.push(PriceRow {
                     offer_jurisdiction_id: oj_id,
-                    provider_item_id: Some(provider_item_id),
+                    video_game_source_id: Some(video_game_source_id),
                     recorded_at: Utc::now(),
                     amount_minor,
                     tax_inclusive: true,

@@ -177,7 +177,8 @@ BEGIN
 END$$;
 
 -- 6) Align the products sequence with the newly inserted ids.
-SELECT setval('products_id_seq', COALESCE((SELECT MAX(id) FROM public.products), 0));
+-- Use GREATEST to ensure value is never less than 1 (sequences must be >= 1)
+SELECT setval('products_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM public.products), 0), 1));
 
 -- 7) Rebuild the strict constraints.
 ALTER TABLE public.video_game_titles

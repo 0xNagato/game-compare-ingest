@@ -1,10 +1,10 @@
 use crate::database_ops::db::{CurrentPriceRow, Db, PriceRow};
 use crate::database_ops::ingest_providers::{
-    ProviderEntityCache, ensure_country, ensure_currency, ensure_national_jurisdiction,
-    ensure_provider, ensure_retailer, link_provider_offer,
+    ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_provider,
+    ensure_retailer, link_provider_offer, ProviderEntityCache,
 };
 use crate::util::env as env_util;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use atoi::atoi;
 use chrono::{DateTime, Utc};
 use csv::{ByteRecord, ReaderBuilder};
@@ -122,14 +122,14 @@ pub async fn run_import(fast: bool) -> Result<()> {
             "provider": "itad",
             "source": provider_namespace
         });
-        let provider_item_id = entity_cache
+        let video_game_source_id = entity_cache
             .ensure_provider_item(provider_id, &provider_nat, Some(meta_value.clone()), false)
             .await?;
-        link_provider_offer(&db, provider_item_id, offer_id, Some(0.8)).await?;
+        link_provider_offer(&db, video_game_source_id, offer_id, Some(0.8)).await?;
 
         let row = PriceRow {
             offer_jurisdiction_id: oj_id,
-            provider_item_id: Some(provider_item_id),
+            video_game_source_id: Some(video_game_source_id),
             recorded_at: now,
             amount_minor,
             tax_inclusive: true,

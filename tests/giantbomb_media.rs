@@ -9,7 +9,25 @@ use std::env;
 #[tokio::test]
 async fn giantbomb_media_upsert() -> Result<()> {
     dotenv::dotenv().ok();
-    let database_url = env::var("SUPABASE_DB_URL").or_else(|_| env::var("DATABASE_URL"))?;
+
+    let run_db_tests = env::var("RUN_DB_TESTS")
+        .ok()
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+    if !run_db_tests {
+        eprintln!("skipping: set RUN_DB_TESTS=1 to run giantbomb_media_upsert");
+        return Ok(());
+    }
+
+    let database_url = match env::var("SUPABASE_DB_URL").or_else(|_| env::var("DATABASE_URL")) {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!(
+                "skipping: set SUPABASE_DB_URL or DATABASE_URL to run giantbomb_media_upsert"
+            );
+            return Ok(());
+        }
+    };
     let db = Db::connect(&database_url, 5).await?;
 
     // Ensure prerequisite currency/country/jurisdiction minimal for video_game creation side-effects.

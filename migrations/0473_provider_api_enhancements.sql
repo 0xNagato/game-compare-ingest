@@ -1,8 +1,8 @@
--- 0473_provider_api_enhancements.sql
+-- 0473_video_game_source_api_enhancements.sql
 -- =============================
--- providers: add descriptive + operational fields
+-- video_game_sources: add descriptive + operational fields
 -- =============================
-ALTER TABLE IF EXISTS public.providers
+ALTER TABLE IF EXISTS public.video_game_sources
   ADD COLUMN IF NOT EXISTS base_url text,
   ADD COLUMN IF NOT EXISTS website_url text,
   ADD COLUMN IF NOT EXISTS docs_url text,
@@ -14,19 +14,25 @@ ALTER TABLE IF EXISTS public.providers
   ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 -- Backfill NULL flags to sane defaults
-UPDATE public.providers
-   SET is_active = true,
-       auth_metadata = coalesce(auth_metadata, '{}'::jsonb),
-       metadata = coalesce(metadata, '{}'::jsonb)
- WHERE is_active IS NULL OR auth_metadata IS NULL OR metadata IS NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_game_sources' AND column_name='is_active') THEN
+    UPDATE public.video_game_sources SET is_active = true WHERE is_active IS NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_game_sources' AND column_name='auth_metadata') THEN
+    UPDATE public.video_game_sources SET auth_metadata = '{}' WHERE auth_metadata IS NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_game_sources' AND column_name='metadata') THEN
+    UPDATE public.video_game_sources SET metadata = '{}' WHERE metadata IS NULL;
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS providers_kind_idx ON public.providers (kind);
-CREATE INDEX IF NOT EXISTS providers_active_idx ON public.providers (is_active);
+CREATE INDEX IF NOT EXISTS video_game_sources_kind_idx ON public.video_game_sources (kind);
+CREATE INDEX IF NOT EXISTS video_game_sources_active_idx ON public.video_game_sources (is_active);
 
 -- =============================
--- retailer_providers: credentials + sync metadata per retailer binding
+-- retailer_video_game_sources: credentials + sync metadata per retailer binding
 -- =============================
-ALTER TABLE IF EXISTS public.retailer_providers
+ALTER TABLE IF EXISTS public.retailer_video_game_sources
   ADD COLUMN IF NOT EXISTS credentials jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS settings jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS jurisdiction_scope text[] DEFAULT '{}',
@@ -41,57 +47,83 @@ ALTER TABLE IF EXISTS public.retailer_providers
   ADD COLUMN IF NOT EXISTS is_enabled boolean NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS priority smallint NOT NULL DEFAULT 100;
 
-UPDATE public.retailer_providers
-   SET credentials = coalesce(credentials, '{}'::jsonb),
-       settings = coalesce(settings, '{}'::jsonb),
-       metadata = coalesce(metadata, '{}'::jsonb),
-       jurisdiction_scope = coalesce(jurisdiction_scope, '{}'),
-       is_enabled = coalesce(is_enabled, true),
-       priority = coalesce(priority, 100)
- WHERE credentials IS NULL OR settings IS NULL OR metadata IS NULL OR jurisdiction_scope IS NULL OR is_enabled IS NULL OR priority IS NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='retailer_video_game_sources')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_video_game_sources' AND column_name='credentials')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_video_game_sources' AND column_name='settings')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_video_game_sources' AND column_name='metadata')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_video_game_sources' AND column_name='jurisdiction_scope')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_video_game_sources' AND column_name='is_enabled')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_video_game_sources' AND column_name='priority') THEN
+    UPDATE public.retailer_video_game_sources
+       SET credentials = coalesce(credentials, '{}'::jsonb),
+           settings = coalesce(settings, '{}'::jsonb),
+           metadata = coalesce(metadata, '{}'::jsonb),
+           jurisdiction_scope = coalesce(jurisdiction_scope, '{}'),
+           is_enabled = coalesce(is_enabled, true),
+           priority = coalesce(priority, 100)
+     WHERE credentials IS NULL OR settings IS NULL OR metadata IS NULL OR jurisdiction_scope IS NULL OR is_enabled IS NULL OR priority IS NULL;
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS retailer_providers_provider_idx ON public.retailer_providers (provider_id);
-CREATE INDEX IF NOT EXISTS retailer_providers_sync_status_idx ON public.retailer_providers (sync_status);
-CREATE INDEX IF NOT EXISTS retailer_providers_next_sync_idx ON public.retailer_providers (next_sync_at);
+CREATE INDEX IF NOT EXISTS retailer_video_game_sources_video_game_source_idx ON public.retailer_video_game_sources (video_game_source_id);
+CREATE INDEX IF NOT EXISTS retailer_video_game_sources_sync_status_idx ON public.retailer_video_game_sources (sync_status);
+CREATE INDEX IF NOT EXISTS retailer_video_game_sources_next_sync_idx ON public.retailer_video_game_sources (next_sync_at);
 
 -- =============================
--- provider_items: richer external identifiers & lifecycle tracking
+-- video_game_source_items: richer external identifiers & lifecycle tracking
 -- =============================
-ALTER TABLE IF EXISTS public.provider_items
+ALTER TABLE IF EXISTS public.video_game_source_items
   ADD COLUMN IF NOT EXISTS external_sku text,
   ADD COLUMN IF NOT EXISTS region_code text,
   ADD COLUMN IF NOT EXISTS last_seen_at timestamptz,
   ADD COLUMN IF NOT EXISTS checksum bytea,
   ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}'::jsonb;
 
-UPDATE public.provider_items
-   SET attributes = coalesce(attributes, '{}'::jsonb)
- WHERE attributes IS NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='video_game_source_items') THEN
+    UPDATE public.video_game_source_items
+       SET attributes = coalesce(attributes, '{}'::jsonb)
+     WHERE attributes IS NULL;
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS provider_items_region_idx ON public.provider_items (provider_id, region_code);
-CREATE INDEX IF NOT EXISTS provider_items_last_seen_idx ON public.provider_items (last_seen_at DESC);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='video_game_source_items') THEN
+    CREATE INDEX IF NOT EXISTS video_game_source_items_region_idx ON public.video_game_source_items (video_game_source_id, region_code);
+    CREATE INDEX IF NOT EXISTS video_game_source_items_last_seen_idx ON public.video_game_source_items (last_seen_at DESC);
+  END IF;
+END $$;
 
 -- =============================
--- provider_offers: matching confidence + lifecycle metadata
+-- video_game_source_offers: matching confidence + lifecycle metadata
 -- =============================
-ALTER TABLE IF EXISTS public.provider_offers
+ALTER TABLE IF EXISTS public.video_game_source_offers
   ADD COLUMN IF NOT EXISTS confidence numeric(5,4) CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
   ADD COLUMN IF NOT EXISTS strategy text,
   ADD COLUMN IF NOT EXISTS last_matched_at timestamptz,
   ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS notes text;
 
-UPDATE public.provider_offers
-   SET is_active = coalesce(is_active, true)
- WHERE is_active IS NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='video_game_source_offers') THEN
+    UPDATE public.video_game_source_offers
+       SET is_active = coalesce(is_active, true)
+     WHERE is_active IS NULL;
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS provider_offers_active_idx ON public.provider_offers (is_active) WHERE is_active;
-CREATE INDEX IF NOT EXISTS provider_offers_confidence_idx ON public.provider_offers (confidence);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='video_game_source_offers') THEN
+    CREATE INDEX IF NOT EXISTS video_game_source_offers_active_idx ON public.video_game_source_offers (is_active) WHERE is_active;
+    CREATE INDEX IF NOT EXISTS video_game_source_offers_confidence_idx ON public.video_game_source_offers (confidence);
+  END IF;
+END $$;
 
 -- =============================
--- provider_ingest_runs: align with operational telemetry
+-- video_game_source_ingest_runs: align with operational telemetry
 -- =============================
-ALTER TABLE IF EXISTS public.provider_ingest_runs
+ALTER TABLE IF EXISTS public.video_game_source_ingest_runs
   ADD COLUMN IF NOT EXISTS run_kind text,
   ADD COLUMN IF NOT EXISTS job_id text,
   ADD COLUMN IF NOT EXISTS ended_at timestamptz,
@@ -101,23 +133,21 @@ ALTER TABLE IF EXISTS public.provider_ingest_runs
   ADD COLUMN IF NOT EXISTS items_processed bigint,
   ADD COLUMN IF NOT EXISTS prices_written bigint;
 
-UPDATE public.provider_ingest_runs
-   SET meta = coalesce(meta, '{}'::jsonb),
-       stats = coalesce(stats, '{}'::jsonb),
-       errors = coalesce(errors, '{}'::jsonb),
-       items_processed = coalesce(items_processed, 0),
-       prices_written = coalesce(prices_written, 0)
- WHERE meta IS NULL OR stats IS NULL OR errors IS NULL OR items_processed IS NULL OR prices_written IS NULL;
+-- Skip UPDATE for ingest_runs table as it will be removed in migration 0535
 
-CREATE INDEX IF NOT EXISTS provider_ingest_runs_provider_idx ON public.provider_ingest_runs (provider_id, started_at DESC);
-CREATE INDEX IF NOT EXISTS provider_ingest_runs_status_idx ON public.provider_ingest_runs (status);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='video_game_source_ingest_runs') THEN
+    CREATE INDEX IF NOT EXISTS video_game_source_ingest_runs_video_game_source_idx ON public.video_game_source_ingest_runs (video_game_source_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS video_game_source_ingest_runs_status_idx ON public.video_game_source_ingest_runs (status);
+  END IF;
+END $$;
 
 DO $$
 BEGIN
-  CREATE TABLE IF NOT EXISTS public.provider_sync_states (
+  CREATE TABLE IF NOT EXISTS public.video_game_source_sync_states (
     id bigserial PRIMARY KEY,
-    provider_id bigint NOT NULL REFERENCES public.providers(id) ON DELETE CASCADE,
-    retailer_provider_id bigint REFERENCES public.retailer_providers(id) ON DELETE CASCADE,
+    video_game_source_id bigint NOT NULL REFERENCES public.video_game_sources(id) ON DELETE CASCADE,
+    retailer_video_game_source_id bigint REFERENCES public.retailer_video_game_sources(id) ON DELETE CASCADE,
     sync_kind text NOT NULL,
     last_synced_at timestamptz,
     next_sync_at timestamptz,
@@ -131,16 +161,16 @@ EXCEPTION
   WHEN duplicate_table THEN NULL;
 END $$;
 
-CREATE INDEX IF NOT EXISTS provider_sync_states_provider_idx
-  ON public.provider_sync_states (provider_id, sync_kind);
-CREATE INDEX IF NOT EXISTS provider_sync_states_next_idx
-  ON public.provider_sync_states (next_sync_at);
-CREATE INDEX IF NOT EXISTS provider_sync_states_status_idx
-  ON public.provider_sync_states (sync_status);
+CREATE INDEX IF NOT EXISTS video_game_source_sync_states_video_game_source_idx
+  ON public.video_game_source_sync_states (video_game_source_id, sync_kind);
+CREATE INDEX IF NOT EXISTS video_game_source_sync_states_next_idx
+  ON public.video_game_source_sync_states (next_sync_at);
+CREATE INDEX IF NOT EXISTS video_game_source_sync_states_status_idx
+  ON public.video_game_source_sync_states (sync_status);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_provider_sync_states_kind
-  ON public.provider_sync_states (provider_id, sync_kind, coalesce(retailer_provider_id, 0::bigint));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_video_game_source_sync_states_kind
+  ON public.video_game_source_sync_states (video_game_source_id, sync_kind, coalesce(retailer_video_game_source_id, 0::bigint));
 
 -- Ensure RLS is disabled for administrative tables when running inside Supabase backend role
-COMMENT ON TABLE public.provider_sync_states IS 'Tracks per-provider sync windows, cursors, and status for API integrations.';
-COMMENT ON COLUMN public.provider_sync_states.sync_kind IS 'Describes dataset being synchronized (e.g., catalogue, offers, prices).';
+COMMENT ON TABLE public.video_game_source_sync_states IS 'Tracks per-video_game_source sync windows, cursors, and status for API integrations.';
+COMMENT ON COLUMN public.video_game_source_sync_states.sync_kind IS 'Describes dataset being synchronized (e.g., catalogue, offers, prices).';

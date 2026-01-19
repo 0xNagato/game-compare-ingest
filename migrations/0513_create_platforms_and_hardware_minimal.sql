@@ -12,7 +12,7 @@ CREATE TABLE
         family text
     );
 
-CREATE INDEX IF NOT EXISTS platforms_name_trgm_idx ON public.platforms USING gin ((name) ext.gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS platforms_name_trgm_idx ON public.platforms USING gin ((name) gin_trgm_ops);
 
 CREATE TABLE
     IF NOT EXISTS public.hardware (
@@ -34,4 +34,4 @@ CREATE TABLE
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_game_consoles_product_model_variant ON public.game_consoles (product_id, model, (coalesce(variant, '')));
 
-CREATE INDEX IF NOT EXISTS consoles_model_trgm_idx ON public.game_consoles USING gin ((model) ext.gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS consoles_model_trgm_idx ON public.game_consoles USING gin ((model) gin_trgm_ops);

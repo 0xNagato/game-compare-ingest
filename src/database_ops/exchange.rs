@@ -266,7 +266,8 @@ impl ExchangeService {
         if let Ok(provider) = std::env::var("FX_PREFERRED_PROVIDER") {
             if !provider.is_empty() {
                 let rec = sqlx::query_scalar(
-                        "SELECT rate FROM exchange_rates WHERE base_currency=$1 AND quote_currency=$2 AND provider=$3 ORDER BY fetched_at DESC LIMIT 1"
+                        // Legacy DBs sometimes store `rate` as NUMERIC; cast to float8 to match Rust f64.
+                        "SELECT rate::float8 FROM exchange_rates WHERE base_currency=$1 AND quote_currency=$2 AND provider=$3 ORDER BY fetched_at DESC LIMIT 1"
                 )
                 .bind(base)
                 .bind(quote)
@@ -279,7 +280,8 @@ impl ExchangeService {
             }
         }
         let rec = sqlx::query_scalar(
-                "SELECT rate FROM exchange_rates WHERE base_currency=$1 AND quote_currency=$2 ORDER BY fetched_at DESC LIMIT 1"
+                // Legacy DBs sometimes store `rate` as NUMERIC; cast to float8 to match Rust f64.
+                "SELECT rate::float8 FROM exchange_rates WHERE base_currency=$1 AND quote_currency=$2 ORDER BY fetched_at DESC LIMIT 1"
         )
         .bind(base)
         .bind(quote)

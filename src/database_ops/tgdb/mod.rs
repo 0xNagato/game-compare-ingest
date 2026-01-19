@@ -1,9 +1,23 @@
 use anyhow::Result;
 use serde::Deserialize;
-use tracing::{ info, warn };
+use serde_json::json;
 use std::collections::HashMap;
+use tracing::{info, warn};
 
 use crate::database_ops::db::Db;
+
+async fn table_exists(db: &Db, name: &str) -> bool {
+    sqlx::query_scalar::<_, bool>(
+        "SELECT TRUE FROM information_schema.tables WHERE table_schema = ANY (current_schemas(true)) AND table_name = $1 LIMIT 1",
+    )
+    .persistent(false)
+    .bind(name)
+    .fetch_optional(&db.pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(false)
+}
 
 fn slugify(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -17,9 +31,7 @@ fn slugify(input: &str) -> String {
     out.trim_matches('-').to_string()
 }
 fn parse_year(date: &str) -> Option<i32> {
-    date.get(0..4)?
-        .parse()
-        .ok()
+    date.get(0..4)?.parse().ok()
 }
 
 fn classify_tgdb_role(t: &str) -> &'static str {
@@ -103,29 +115,35 @@ pub async fn ingest_range(
     db: &Db,
     api_key: Option<String>,
     year_min: i32,
-    year_max: i32
+    year_max: i32,
 ) -> Result<()> {
     use crate::database_ops::ingest_providers::{
-        ensure_provider,
-        ensure_platform,
-        ensure_product_named,
-        ensure_software_row,
-        ensure_video_game_title,
-        ensure_video_game,
-        ensure_provider_item,
-        ensure_provider_media_links_with_meta,
+        ensure_platform, ensure_product_named, ensure_provider, ensure_provider_item,
+        ensure_software_row, ensure_vg_source_media_links_with_meta, ensure_video_game,
+        ensure_video_game_title, upsert_game_media_batch,
     };
-    let provider_id = ensure_provider(db, "tgdb", "catalog", Some("tgdb")).await?;
+    let provider_id: Option<i64> = if table_exists(db, "provider_items").await
+        && table_exists(db, "video_game_sources").await
+    {
+        Some(ensure_provider(db, "tgdb", "catalog", Some("tgdb")).await?)
+    } else {
+        warn!(
+            "TGDB: provider_items/video_game_sources missing; skipping provider_items + media linking (core catalogue ingest will continue)"
+        );
+        None
+    };
+    let can_write_provider_media_links =
+        provider_id.is_some() && table_exists(db, "vg_source_media_links").await;
     let client = reqwest::Client::new();
-    let key = api_key.or_else(|| std::env::var("TGDB_API_KEY").ok()).unwrap_or_default();
-    let rpm: u64 = std::env
-        ::var("TGDB_REQS_PER_MIN")
+    let key = api_key
+        .or_else(|| std::env::var("TGDB_API_KEY").ok())
+        .unwrap_or_default();
+    let rpm: u64 = std::env::var("TGDB_REQS_PER_MIN")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);
     let sleep_ms = if rpm > 0 { (60_000u64 / rpm).max(1) } else { 0 };
-    let page_size: u32 = std::env
-        ::var("TGDB_PAGE_SIZE")
+    let page_size: u32 = std::env::var("TGDB_PAGE_SIZE")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(50);
@@ -166,19 +184,13 @@ pub async fn ingest_range(
         loop {
             let mut gurl = format!(
                 "https://api.thegamesdb.net/Games?filter[platform]={}&page={}&limit={}",
-                pid,
-                page,
-                page_size
+                pid, page, page_size
             );
             if !key.is_empty() {
                 gurl = format!(
                     "{}{}apikey={}",
                     gurl,
-                    if gurl.contains('?') {
-                        "&"
-                    } else {
-                        "?"
-                    },
+                    if gurl.contains('?') { "&" } else { "?" },
                     key
                 );
             }
@@ -191,7 +203,8 @@ pub async fn ingest_range(
                 break;
             }
             let games: VideoGame = gresp.json().await?;
-            let mut list: Vec<_> = games.data
+            let mut list: Vec<_> = games
+                .data
                 .as_ref()
                 .and_then(|d| d.games.as_ref())
                 .map(|m| m.values().cloned().collect())
@@ -200,20 +213,22 @@ pub async fn ingest_range(
                 break;
             }
             // filter by release year if present
-            list.retain(|g|
+            list.retain(|g| {
                 g.release_date
                     .as_ref()
                     .and_then(|s| parse_year(s))
                     .map(|y| y >= year_min && y <= year_max)
                     .unwrap_or(true)
-            );
+            });
             // sort descending by release_date
             list.sort_by(|a, b| {
-                let ya = a.release_date
+                let ya = a
+                    .release_date
                     .as_ref()
                     .and_then(|s| parse_year(s))
                     .unwrap_or(0);
-                let yb = b.release_date
+                let yb = b
+                    .release_date
                     .as_ref()
                     .and_then(|s| parse_year(s))
                     .unwrap_or(0);
@@ -226,18 +241,26 @@ pub async fn ingest_range(
                         continue;
                     }
                 };
-                let title = g.game_title.clone().unwrap_or_else(|| format!("Game {}", gid));
+                let title = g
+                    .game_title
+                    .clone()
+                    .unwrap_or_else(|| format!("Game {}", gid));
                 let slug = slugify(&title);
                 let product_id = ensure_product_named(db, "software", &slug, &title).await?;
                 ensure_software_row(db, product_id).await?;
                 let title_id = ensure_video_game_title(db, product_id, &title, Some(&slug)).await?;
-                let _vg = ensure_video_game(db, title_id, platform_id, None).await?;
-                let pi = ensure_provider_item(
-                    db,
-                    provider_id,
-                    &format!("tgdb:{}", gid),
+                let vg_id = ensure_video_game(db, title_id, platform_id, None).await?;
+                let pi: Option<i64> = if let Some(pid) = provider_id {
+                    match ensure_provider_item(db, pid, &format!("tgdb:{}", gid), None).await {
+                        Ok(id) => Some(id),
+                        Err(err) => {
+                            warn!(game_id = gid, error = %err, "TGDB: ensure_provider_item failed; skipping provider linkage for this game");
+                            None
+                        }
+                    }
+                } else {
                     None
-                ).await?;
+                };
 
                 // images
                 let mut iurl = format!("https://api.thegamesdb.net/Games/Images?games_id={}", gid);
@@ -250,43 +273,103 @@ pub async fn ingest_range(
                 let iresp = client.get(&iurl).send().await?;
                 if iresp.status().is_success() {
                     let imgs: GameImages = iresp.json().await?;
-                    if
-                        let (Some(base), Some(data)) = (
-                            imgs.base_url.and_then(|b| b.original),
-                            imgs.data,
-                        )
+                    if let (Some(base), Some(data)) =
+                        (imgs.base_url.and_then(|b| b.original), imgs.data)
                     {
                         if let Some(map) = data.images {
-                            let mut media: Vec<
-                                (String, Option<String>, Option<String>, Option<String>)
-                            > = Vec::new();
-                            if let Some(v) = map.get(&gid.to_string()) {
-                                for im in v {
+                            if let Some(entries) = map.get(&gid.to_string()) {
+                                let mut media_links: Vec<(
+                                    String,
+                                    Option<String>,
+                                    Option<String>,
+                                    Option<String>,
+                                )> = Vec::new();
+                                let mut canonical_media_rows: Vec<(
+                                    i64,
+                                    String,
+                                    String,
+                                    String,
+                                    String,
+                                    serde_json::Value,
+                                )> = Vec::new();
+                                for (idx, im) in entries.iter().enumerate() {
                                     if let Some(fname) = &im.filename {
                                         let url = format!("{}{}", base, fname);
                                         let role = classify_tgdb_role(
-                                            im.r#type.as_deref().unwrap_or("image")
-                                        ).to_string();
-                                        media.push((
-                                            url,
+                                            im.r#type.as_deref().unwrap_or("image"),
+                                        )
+                                        .to_string();
+                                        media_links.push((
+                                            url.clone(),
                                             Some("image".into()),
-                                            Some(role),
+                                            Some(role.clone()),
                                             Some(title.clone()),
+                                        ));
+                                        let provider_data = json!({
+                                            "source": "tgdb",
+                                            "role": role,
+                                            "media_class": "image",
+                                            "tgdb_game_id": gid,
+                                            "filename": fname,
+                                            "platform_id": platform_id,
+                                            "release_date": g.release_date,
+                                            "type": im.r#type,
+                                            "position": idx,
+                                        });
+                                        canonical_media_rows.push((
+                                            vg_id,
+                                            "tgdb".to_string(),
+                                            format!("tgdb:{}:{}", gid, fname),
+                                            role.clone(),
+                                            url,
+                                            provider_data,
                                         ));
                                     }
                                 }
-                            }
-                            if !media.is_empty() {
-                                let meta =
-                                    serde_json::json!({"platform_id": platform_id, "year": g.release_date, "source":"tgdb"});
-                                let _ = ensure_provider_media_links_with_meta(
-                                    db,
-                                    pi,
-                                    None,
-                                    &media,
-                                    "tgdb",
-                                    Some(meta)
-                                ).await;
+
+                                if !canonical_media_rows.is_empty() {
+                                    let borrowed: Vec<_> = canonical_media_rows
+                                        .iter()
+                                        .map(|(vg, source, external_id, media_type, url, pdata)| {
+                                            (
+                                                *vg,
+                                                source.as_str(),
+                                                external_id.as_str(),
+                                                media_type.as_str(),
+                                                url.as_str(),
+                                                pdata,
+                                            )
+                                        })
+                                        .collect();
+                                    if let Err(err) = upsert_game_media_batch(db, &borrowed).await {
+                                        warn!(
+                                            game_id = gid,
+                                            error = %err,
+                                            "TGDB: failed to upsert canonical media"
+                                        );
+                                    }
+                                }
+
+                                if can_write_provider_media_links {
+                                    if let Some(video_game_source_id) = pi {
+                                        if !media_links.is_empty() {
+                                            let meta = json!({
+                                                "platform_id": platform_id,
+                                                "year": g.release_date,
+                                                "source": "tgdb",
+                                            });
+                                            let _ = ensure_vg_source_media_links_with_meta(
+                                                db,
+                                                video_game_source_id,
+                                                None,
+                                                &media_links,
+                                                "tgdb",
+                                                Some(meta),
+                                            )
+                                            .await;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -309,13 +392,11 @@ pub async fn ingest_range(
 
 /// Minimal sync shim
 pub async fn sync(db: &Db, api_key: Option<String>) -> Result<()> {
-    let y_min: i32 = std::env
-        ::var("TGDB_YEAR_MIN")
+    let y_min: i32 = std::env::var("TGDB_YEAR_MIN")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2015);
-    let y_max: i32 = std::env
-        ::var("TGDB_YEAR_MAX")
+    let y_max: i32 = std::env::var("TGDB_YEAR_MAX")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2025);

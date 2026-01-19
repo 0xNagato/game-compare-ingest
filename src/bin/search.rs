@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use i_miss_rust::database_ops::{
     db::Db,
     search::{search_games, search_match_both},

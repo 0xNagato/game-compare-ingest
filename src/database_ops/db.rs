@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::{Datelike, TimeZone, Utc};
 use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions, PgSslMode},
     PgPool, QueryBuilder, Row,
-    postgres::{PgConnectOptions, PgPoolOptions},
 };
 use std::str::FromStr;
 use std::time::Duration;
@@ -14,12 +14,21 @@ pub struct Db {
 }
 
 impl Db {
-    #[instrument]
+    // SECURITY: never include raw DSNs in tracing spans (they may contain credentials).
+    #[instrument(skip(database_url))]
     pub async fn connect(database_url: &str, max_connections: u32) -> Result<Self> {
         let use_prepared = std::env::var("USE_PREPARED")
             .map(|v| (v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("on")))
             .unwrap_or(false);
         let mut connect_options = PgConnectOptions::from_str(database_url)?;
+
+        // Ensure TLS is enabled when DSN contains sslmode=require
+        // sqlx with runtime-tokio-rustls should handle this automatically via the DSN,
+        // but we can be explicit to avoid issues
+        if database_url.contains("sslmode=require") && !database_url.contains("sslmode=disable") {
+            connect_options = connect_options.ssl_mode(PgSslMode::Require);
+        }
+
         if !use_prepared {
             // PgBouncer txn mode safe
             connect_options = connect_options.statement_cache_capacity(0);
@@ -62,10 +71,15 @@ impl Db {
             .await?;
         info!("connected to db");
 
-        // Optional auto-migrate gate (default: true)
+        // Optional auto-migrate gate (default: OFF).
+        // We default to off because this project must safely run against legacy/partial schemas.
+        // Enable explicitly with AUTO_MIGRATE=1/true/on.
         let auto_migrate = std::env::var("AUTO_MIGRATE")
-            .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
-            .unwrap_or(true);
+            .map(|raw| {
+                let v = raw.trim().to_ascii_lowercase();
+                matches!(v.as_str(), "1" | "true" | "on" | "yes")
+            })
+            .unwrap_or(false);
         if auto_migrate {
             info!("running migrations (AUTO_MIGRATE=on, custom runner)");
             Self::run_migrations(&pool).await?;
@@ -76,12 +90,19 @@ impl Db {
     }
 
     // Variant that NEVER runs migrations regardless of env (for pure data import paths).
-    #[instrument]
+    // SECURITY: never include raw DSNs in tracing spans (they may contain credentials).
+    #[instrument(skip(database_url))]
     pub async fn connect_no_migrate(database_url: &str, max_connections: u32) -> Result<Self> {
         let use_prepared = std::env::var("USE_PREPARED")
             .map(|v| (v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("on")))
             .unwrap_or(false);
         let mut connect_options = PgConnectOptions::from_str(database_url)?;
+
+        // Ensure TLS is enabled when DSN contains sslmode=require
+        if database_url.contains("sslmode=require") && !database_url.contains("sslmode=disable") {
+            connect_options = connect_options.ssl_mode(PgSslMode::Require);
+        }
+
         if !use_prepared {
             connect_options = connect_options.statement_cache_capacity(0);
         }
@@ -277,9 +298,10 @@ impl Db {
     }
 }
 
+#[derive(Clone)]
 pub struct PriceRow {
     pub offer_jurisdiction_id: i64,
-    pub provider_item_id: Option<i64>,
+    pub video_game_source_id: Option<i64>,
     pub recorded_at: chrono::DateTime<chrono::Utc>,
     pub amount_minor: i64,
     pub tax_inclusive: bool,
@@ -324,11 +346,11 @@ impl Db {
             }
         }
         let mut qb: QueryBuilder<'_, sqlx::Postgres> = QueryBuilder::new(
-            "INSERT INTO prices (offer_jurisdiction_id, provider_item_id, recorded_at, amount_minor, tax_inclusive, fx_minor_per_unit, btc_sats_per_unit, meta) ",
+            "INSERT INTO prices (offer_jurisdiction_id, video_game_source_id, recorded_at, amount_minor, tax_inclusive, fx_minor_per_unit, btc_sats_per_unit, meta) ",
         );
         qb.push_values(rows, |mut b, r| {
             b.push_bind(r.offer_jurisdiction_id)
-                .push_bind(r.provider_item_id)
+                .push_bind(r.video_game_source_id)
                 .push_bind(r.recorded_at)
                 .push_bind(r.amount_minor)
                 .push_bind(r.tax_inclusive)

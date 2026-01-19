@@ -1,4 +1,6 @@
 use crate::database_ops::media_map::normalize_title;
+use crate::database_ops::playstation::prices::extract_rating_from_detail;
+use crate::util::env as env_util;
 use anyhow::{Context, Result};
 use psstore_client::{PsConfig, PsStoreClient};
 use serde_json::Value;
@@ -8,7 +10,6 @@ use std::{
     fs::File,
     io::BufReader,
 };
-use crate::util::env as env_util;
 
 pub async fn run_from_env() -> Result<()> {
     let _ = dotenv::dotenv();
@@ -117,20 +118,28 @@ pub async fn run_from_env() -> Result<()> {
             }
             if let Some(product_id) = product_id_opt {
                 total_matched += 1;
-                match client.product_star_rating(&locale, &product_id).await {
-                    Ok(Some((avg, cnt))) => {
-                        total_rated += 1;
-                        if let Some(pool) = &pool_opt {
-                            if let Some(vg_id) = lookup_video_game(pool, &norm, platform).await? {
-                                updates.push((vg_id, avg, cnt));
-                            } else {
-                                tracing::debug!(slug = %norm, platform = %platform, "video_game row not found for rating update");
+                // NOTE: Use product_detail_raw() instead of product_star_rating() (2025-12-27)
+                // The detail response already contains star rating data, avoiding redundant API calls
+                // and "Unknown operation" errors for the separate star rating query.
+                match client.product_detail_raw(&locale, &product_id).await {
+                    Ok(detail) => {
+                        // Extract rating from detail using same logic as prices.rs
+                        if let Some(rating) = extract_rating_from_detail(Some(&detail)) {
+                            let (avg, cnt) = rating;
+                            total_rated += 1;
+                            if let Some(pool) = &pool_opt {
+                                if let Some(vg_id) =
+                                    lookup_video_game(pool, &norm, platform).await?
+                                {
+                                    updates.push((vg_id, avg, cnt));
+                                } else {
+                                    tracing::debug!(slug = %norm, platform = %platform, "video_game row not found for rating update");
+                                }
                             }
                         }
                     }
-                    Ok(None) => {}
                     Err(e) => {
-                        tracing::warn!(title = %original_title, platform = %platform, error = %e, "rating fetch failed");
+                        tracing::warn!(title = %original_title, platform = %platform, error = %e, "detail fetch failed");
                     }
                 }
             }

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use futures::{SinkExt, StreamExt, future::pending};
+use futures::{future::pending, SinkExt, StreamExt};
 use i_miss_rust::database_ops::db::{CurrentPriceRow, Db, PriceRow};
 use i_miss_rust::database_ops::exchange::ExchangeService;
 use i_miss_rust::database_ops::ingest_providers::*;
@@ -8,16 +8,16 @@ use i_miss_rust::util::env as env_util;
 use psstore_client::{PsConfig, PsProductSummary, PsStoreClient};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::Row;
 use sqlx::types::Json;
+use sqlx::Row;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use tokio::time::{Duration, MissedTickBehavior, interval, sleep};
+use tokio::time::{interval, sleep, Duration, MissedTickBehavior};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
-use url::{Url, form_urlencoded};
+use url::{form_urlencoded, Url};
 
 // Removed unused PgPool imports; using existing Db wrapper instead.
 
@@ -192,7 +192,7 @@ struct WorkerMetrics {
 
 mod http_api {
     use super::*;
-    use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+    use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
     #[derive(Deserialize)]
     pub struct EnqueueReq {
@@ -412,7 +412,7 @@ async fn connect_listen(url: String) -> Result<tokio::sync::mpsc::UnboundedRecei
     let (tx, rx) = mpsc::unbounded_channel();
 
     tokio::spawn(async move {
-        use futures::{StreamExt, stream};
+        use futures::{stream, StreamExt};
         let _client = client; // keep handle alive while connection is polled
         let mut messages = stream::poll_fn(move |cx| connection.poll_message(cx));
         while let Some(message) = messages.next().await {
@@ -448,7 +448,7 @@ async fn connect_listen_channel(
     let channel_name = channel.to_string();
 
     tokio::spawn(async move {
-        use futures::{StreamExt, stream};
+        use futures::{stream, StreamExt};
         let _client = client; // keep alive
         let mut messages = stream::poll_fn(move |cx| connection.poll_message(cx));
         while let Some(message) = messages.next().await {
@@ -981,7 +981,7 @@ async fn fetch_all_locales(
     page_depth: u32,
     concurrency: usize,
 ) -> HashMap<String, LocaleFetchResult> {
-    use futures::{StreamExt, stream};
+    use futures::{stream, StreamExt};
     use std::time::Instant;
 
     let iter = stream::iter(regions.iter().cloned().map(|locale| {
@@ -1162,7 +1162,7 @@ async fn materialize(
     }
 
     let mut price_rows: Vec<PriceRow> = Vec::new();
-    let mut linked_provider_item_id: Option<i64> = None;
+    let mut linked_video_game_source_id: Option<i64> = None;
     for loc in regions {
         if let Some(result) = results.get(loc) {
             if let Some(prod) = &result.product {
@@ -1170,10 +1170,10 @@ async fn materialize(
                     let provider_id =
                         ensure_provider(db, "playstation_store", "storefront", Some("ps-store"))
                             .await?;
-                    let provider_item_id =
+                    let video_game_source_id =
                         ensure_provider_item(db, provider_id, ext_id, None).await?;
-                    link_provider_offer(db, provider_item_id, offer_id, Some(0.9)).await?;
-                    linked_provider_item_id = Some(provider_item_id);
+                    link_provider_offer(db, video_game_source_id, offer_id, Some(0.9)).await?;
+                    linked_video_game_source_id = Some(video_game_source_id);
                     let now = Utc::now();
                     let oj_id = offer_juris_to_region
                         .iter()
@@ -1182,7 +1182,7 @@ async fn materialize(
                     if let Some(base) = prod.base_price_minor {
                         price_rows.push(PriceRow {
                             offer_jurisdiction_id: oj_id,
-                            provider_item_id: Some(provider_item_id),
+                            video_game_source_id: Some(video_game_source_id),
                             recorded_at: now,
                             amount_minor: base,
                             tax_inclusive: true,
@@ -1194,7 +1194,7 @@ async fn materialize(
                     if let Some(discount) = prod.discounted_price_minor {
                         price_rows.push(PriceRow {
                             offer_jurisdiction_id: oj_id,
-                            provider_item_id: Some(provider_item_id),
+                            video_game_source_id: Some(video_game_source_id),
                             recorded_at: now,
                             amount_minor: discount,
                             tax_inclusive: true,
@@ -1230,7 +1230,7 @@ async fn materialize(
             };
             price_rows.push(PriceRow {
                 offer_jurisdiction_id: *oj_id,
-                provider_item_id: linked_provider_item_id,
+                video_game_source_id: linked_video_game_source_id,
                 recorded_at: now - chrono::Duration::days(1),
                 amount_minor: amt + 1000,
                 tax_inclusive: true,
@@ -1240,7 +1240,7 @@ async fn materialize(
             });
             price_rows.push(PriceRow {
                 offer_jurisdiction_id: *oj_id,
-                provider_item_id: linked_provider_item_id,
+                video_game_source_id: linked_video_game_source_id,
                 recorded_at: now,
                 amount_minor: amt,
                 tax_inclusive: true,
@@ -1295,7 +1295,11 @@ async fn materialize(
             } else if let Ok(Some(r)) = fx_svc.latest_rate(&base_ccy, &ccy).await {
                 Some(r)
             } else if let Ok(Some(rinv)) = fx_svc.latest_rate(&ccy, &base_ccy).await {
-                if rinv > 0.0 { Some(1.0 / rinv) } else { None }
+                if rinv > 0.0 {
+                    Some(1.0 / rinv)
+                } else {
+                    None
+                }
             } else {
                 None
             };

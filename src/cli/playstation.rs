@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
-use std::ffi::OsStr;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
 use regex::Regex;
 use reqwest::Client;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use tracing::info;
 use url::Url;
 
@@ -365,9 +365,12 @@ pub async fn run_capture_headers(cfg: CaptureHeadersCommandConfig) -> Result<()>
     let mut captures: Vec<Value> = Vec::new();
 
     let script_re = Regex::new(r#"src=\"([^\"]+\.js[^\"]*)\""#)?;
+    // Broaden to handle minified bundles, single quotes, and extra clutter between op name/hash
     let op_re = Regex::new(
-        r#"operationName"\s*:\s*"([^"]+?)"[^\{\}]{{0,300}}"sha256Hash"\s*:\s*"([a-f0-9]{64})""#
+        r#"operationName"\s*[:=]\s*[\"']([^\"']+?)[\"'][^\{\}]{0,600}?"sha256Hash"\s*[:=]\s*"([a-fA-F0-9]{64})""#,
     )?;
+
+    let mut aggregated_hashes: HashMap<String, String> = HashMap::new();
 
     for locale in regions {
         let url = format!("https://store.playstation.com/{}/pages/latest", locale);
@@ -376,25 +379,32 @@ pub async fn run_capture_headers(cfg: CaptureHeadersCommandConfig) -> Result<()>
             .send()
             .await
             .with_context(|| format!("request failed for locale {locale}"))?;
+        let header_map = resp.headers().clone();
         let html = resp.text().await.unwrap_or_default();
-        // Re-request the URL for headers (text() consumes body); build cookies from headers captured earlier
-        let resp_head = client
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("header fetch failed for locale {locale}"))?;
-        let set_cookie_raw: Vec<String> = resp
-            .headers()
+        let set_cookie_raw: Vec<String> = header_map
             .get_all("set-cookie")
             .iter()
             .filter_map(|h| h.to_str().ok().map(|s| s.to_string()))
             .collect();
 
         let mut hashes: HashMap<String, String> = HashMap::new();
+        // Inline HTML scan for any persistedQuery snippets (fallback if script fetch misses)
+        for m in op_re.captures_iter(&html) {
+            let op_name = m.get(1).map(|x| x.as_str()).unwrap_or("");
+            let hash = m.get(2).map(|x| x.as_str()).unwrap_or("");
+            if !op_name.is_empty() && !hash.is_empty() {
+                hashes
+                    .entry(op_name.to_string())
+                    .or_insert_with(|| hash.to_string());
+            }
+        }
+
         if let Ok(base) = Url::parse(&url) {
             for cap in script_re.captures_iter(&html) {
                 let src = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-                if src.is_empty() { continue; }
+                if src.is_empty() {
+                    continue;
+                }
                 let script_url = if let Ok(u) = Url::parse(src) {
                     u
                 } else if let Ok(u) = base.join(src) {
@@ -405,13 +415,17 @@ pub async fn run_capture_headers(cfg: CaptureHeadersCommandConfig) -> Result<()>
                 // Fetch script body (best-effort, with 2 MB limit to avoid huge bundles)
                 if let Ok(resp_js) = client.get(script_url.clone()).send().await {
                     if let Ok(bytes) = resp_js.bytes().await {
-                        if bytes.len() > 2 * 1024 * 1024 { continue; }
+                        if bytes.len() > 2 * 1024 * 1024 {
+                            continue;
+                        }
                         if let Ok(text) = std::str::from_utf8(&bytes) {
                             for m in op_re.captures_iter(text) {
                                 let op_name = m.get(1).map(|x| x.as_str()).unwrap_or("");
                                 let hash = m.get(2).map(|x| x.as_str()).unwrap_or("");
                                 if !op_name.is_empty() && !hash.is_empty() {
-                                    hashes.entry(op_name.to_string()).or_insert_with(|| hash.to_string());
+                                    hashes
+                                        .entry(op_name.to_string())
+                                        .or_insert_with(|| hash.to_string());
                                 }
                             }
                         }
@@ -427,13 +441,21 @@ pub async fn run_capture_headers(cfg: CaptureHeadersCommandConfig) -> Result<()>
                     let name = name.trim();
                     let val = val.trim();
                     if !name.is_empty() && !val.is_empty() {
-                        combined.entry(name.to_string()).or_insert_with(|| val.to_string());
+                        combined
+                            .entry(name.to_string())
+                            .or_insert_with(|| val.to_string());
                         pairs.push(format!("{}={}", name, val));
                     }
                 }
             }
         }
         let cookie_header = pairs.join("; ");
+        for (k, v) in &hashes {
+            aggregated_hashes
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+
         captures.push(json!({
             "locale": locale,
             "url": url,
@@ -455,6 +477,7 @@ pub async fn run_capture_headers(cfg: CaptureHeadersCommandConfig) -> Result<()>
         "user_agent": ua,
         "combined_cookie_header": combined_cookie_header,
         "locales": captures,
+        "aggregated_hashes": aggregated_hashes,
         "generated_at": Utc::now().to_rfc3339(),
     });
 
@@ -466,8 +489,8 @@ pub async fn run_capture_headers(cfg: CaptureHeadersCommandConfig) -> Result<()>
             fs::create_dir_all(parent).context("creating output parent directory")?;
         }
     }
-    let mut f = fs::File::create(&out_path)
-        .with_context(|| format!("creating {}", out_path.display()))?;
+    let mut f =
+        fs::File::create(&out_path).with_context(|| format!("creating {}", out_path.display()))?;
     f.write_all(serde_json::to_string_pretty(&out_json)?.as_bytes())
         .with_context(|| format!("writing {}", out_path.display()))?;
 

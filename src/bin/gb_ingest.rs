@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use i_miss_rust::database_ops::{db::Db, giantbomb::ingest::ingest_from_file};
 use i_miss_rust::util::env;
-use sqlx::{Row, postgres::PgPoolOptions};
+use sqlx::{postgres::PgPoolOptions, Row};
 
 #[tokio::main]
 async fn main() -> Result<()> {

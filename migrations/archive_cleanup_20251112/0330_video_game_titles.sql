@@ -1,17 +1,8 @@
 -- 0330_video_game_titles.sql (squashed)
 -- Consolidated video_game_titles schema with enrichment columns
-CREATE TABLE IF NOT EXISTS public.video_game_titles (
-  id               bigserial PRIMARY KEY,
-  product_id       bigint NOT NULL UNIQUE REFERENCES public.software(product_id) ON DELETE CASCADE,
-  name             text NOT NULL,
-  slug             citext UNIQUE,
-  summary          text,
-  primary_image_url text,
-  metadata         jsonb,
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  updated_at       timestamptz NOT NULL DEFAULT now()
-);
+-- NOTE: video_game_titles is already created in 0001_full_consolidated_schema.sql
+-- This migration adds indexes on the existing table
 
--- Search indexes
-CREATE INDEX IF NOT EXISTS video_game_titles_name_trgm_idx ON public.video_game_titles USING gin ((name) ext.gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS video_game_titles_slug_trgm_idx ON public.video_game_titles USING gin ((slug::text) ext.gin_trgm_ops);
+-- Search indexes on existing columns
+-- Using 'title' column (defined in 0001) instead of non-existent 'name' column
+CREATE INDEX IF NOT EXISTS video_game_titles_title_trgm_idx ON public.video_game_titles USING gin ((title) gin_trgm_ops);

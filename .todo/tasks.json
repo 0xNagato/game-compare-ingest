@@ -172,11 +172,45 @@
     "status": "complete"
   },
   {
+    "task": "Make provider_items/provider_media_links helpers php-compat-safe",
+    "priority": "high",
+    "progress": "validated",
+    "dependencies": [
+      "Restore provider_media_links upsert conflict target"
+    ],
+    "status": "complete"
+  },
+  {
+    "task": "Harden remaining ingest helpers for php-compat",
+    "priority": "high",
+    "progress": "validated",
+    "dependencies": [
+      "Make provider_items/provider_media_links helpers php-compat-safe"
+    ],
+    "status": "complete"
+  },
+  {
     "task": "Document ingest data landing tables and flow",
     "priority": "high",
     "progress": "documented",
     "dependencies": [],
     "status": "complete"
+  },
+  {
+    "task": "Align php-compat region_prices snapshot semantics with Laravel",
+    "priority": "high",
+    "progress": "code-complete",
+    "dependencies": [],
+    "status": "in-progress"
+  },
+  {
+    "task": "Validate multicurrency ingest writes correct region_prices snapshots",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": [
+      "Align php-compat region_prices snapshot semantics with Laravel"
+    ],
+    "status": "pending"
   },
   {
     "task": "Expand db-bootstrap-offers coverage in production database",
@@ -324,6 +358,36 @@
   }
   ,
   {
+    "task": "Guard migration 0554 sellables update via dynamic SQL",
+    "priority": "high",
+    "progress": "validated",
+    "dependencies": [
+      "Reapply migration 0490 via migrate_one and verify schema"
+    ],
+    "status": "complete"
+  }
+  ,
+  {
+    "task": "Rerun destructive reset to discover remaining brittle migrations",
+    "priority": "high",
+    "progress": "executed",
+    "dependencies": [
+      "Guard migration 0554 sellables update via dynamic SQL"
+    ],
+    "status": "complete"
+  }
+  ,
+  {
+    "task": "Harden migration 9997 provider_media backfill for missing gm.title",
+    "priority": "high",
+    "progress": "code-complete",
+    "dependencies": [
+      "Rerun destructive reset to discover remaining brittle migrations"
+    ],
+    "status": "in-progress"
+  }
+  ,
+  {
     "task": "Expose software title display names in model layer",
     "priority": "medium",
     "progress": "pending",
@@ -445,5 +509,220 @@
     "progress": "planning",
     "dependencies": ["Automate stratified provider sampling for prices dashboard"],
     "status": "pending"
+  },
+  {
+    "task": "Make ITAD ingestion compat-aware (php schema vs modern schema)",
+    "priority": "high",
+    "progress": "validated",
+    "dependencies": [
+      "Port additional providers into unified CLI"
+    ],
+    "status": "complete"
+  },
+  {
+    "task": "Unify provider naming across repos (canonical IDs + aliases)",
+    "priority": "medium",
+    "progress": "implemented",
+    "dependencies": [
+      "Design unified ingest CLI skeleton"
+    ],
+    "status": "complete"
+  },
+  {
+    "task": "Document provider inventory + registries",
+    "priority": "medium",
+    "progress": "documented",
+    "dependencies": [
+      "Unify provider naming across repos (canonical IDs + aliases)"
+    ],
+    "status": "complete"
+  },
+  {
+    "task": "Unblock game-compare Supabase schema for steam_ingest",
+    "priority": "high",
+    "progress": "analysis",
+    "dependencies": [],
+    "status": "in-progress"
+  },
+  {
+    "task": "Align steam_ingest_once env + schema preflight (no bootstrap/migrations)",
+    "priority": "high",
+    "progress": "code-complete (cargo check)",
+    "dependencies": ["Unblock game-compare Supabase schema for steam_ingest"],
+    "status": "complete"
+  },
+  {
+    "task": "Author idempotent Supabase migration for missing ingestion tables",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Unblock game-compare Supabase schema for steam_ingest"],
+    "status": "pending"
+  },
+  {
+    "task": "Apply migration and verify ingestion tables exist",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Author idempotent Supabase migration for missing ingestion tables"],
+    "status": "pending"
+  },
+  {
+    "task": "Smoke-test steam_ingest against Supabase (multi-region)",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Apply migration and verify ingestion tables exist"],
+    "status": "pending"
+  },
+  {
+    "task": "Optimize video_games.region_codes update to avoid slow UNNEST/DISTINCT",
+    "priority": "high",
+    "progress": "validated (cargo check)",
+    "dependencies": [],
+    "status": "complete"
+  },
+  {
+    "task": "Make php-compat jurisdiction mapping deterministic (fail-fast by default)",
+    "priority": "high",
+    "progress": "code-complete (cargo check)",
+    "dependencies": [],
+    "status": "in-progress"
+  },
+  {
+    "task": "Smoke-run minimal ingest to confirm perf + jurisdiction behavior",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": [
+      "Optimize video_games.region_codes update to avoid slow UNNEST/DISTINCT",
+      "Make php-compat jurisdiction mapping deterministic (fail-fast by default)"
+    ],
+    "status": "pending"
+  },
+  {
+    "task": "Include sku-region prices in runtime cross-reference",
+    "priority": "high",
+    "progress": "validated (PriceCrossReferencerTest); cache bumped to v5",
+    "dependencies": [],
+    "status": "complete"
+  },
+  {
+    "task": "Remove PlayStation op_get Set-Cookie retry client behavior",
+    "priority": "high",
+    "progress": "implemented (psstore_client op_get) + validated (cargo check)",
+    "dependencies": [],
+    "status": "complete"
+  },
+  {
+    "task": "Update PlayStation client notes to reflect no cookie retry",
+    "priority": "medium",
+    "progress": "implemented (brain.json)",
+    "dependencies": ["Remove PlayStation op_get Set-Cookie retry client behavior"],
+    "status": "complete"
+  },
+  {
+    "task": "Fix RAWG source-registry title linkage (video_game_source_id vs provider_id)",
+    "priority": "high",
+    "progress": "implemented (use video_game_sources when available; cargo check)",
+    "dependencies": ["Harden remaining ingest helpers for php-compat"],
+    "status": "complete"
+  },
+  {
+    "task": "Harden IGDB title-schema detection when video_game_sources table missing",
+    "priority": "high",
+    "progress": "implemented (fallback to legacy linkage; cargo check)",
+    "dependencies": ["Harden remaining ingest helpers for php-compat"],
+    "status": "complete"
+  },
+  {
+    "task": "Verify RAWG/IGDB compile after php-compat fixes",
+    "priority": "high",
+    "progress": "validated (cargo check)",
+    "dependencies": [
+      "Fix RAWG source-registry title linkage (video_game_source_id vs provider_id)",
+      "Harden IGDB title-schema detection when video_game_sources table missing"
+    ],
+    "status": "complete"
+  },
+  {
+    "task": "Fix pg_catalog schema probe SQL whitespace (1FROM) bug",
+    "priority": "high",
+    "progress": "implemented (ingest_providers schema probes) + validated (RAWG smoke)",
+    "dependencies": ["Harden remaining ingest helpers for php-compat"],
+    "status": "complete"
+  },
+  {
+    "task": "Run unified ingest (except Xbox) and confirm php-compat safety",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Fix pg_catalog schema probe SQL whitespace (1FROM) bug"],
+    "status": "pending"
+  },
+  {
+    "task": "Smoke-run IGDB with php-compat schema probes",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Fix pg_catalog schema probe SQL whitespace (1FROM) bug"],
+    "status": "pending"
+  },
+  {
+    "task": "Implement IGDB top-monthly genre ingest (top 50)",
+    "priority": "high",
+    "progress": "implemented (IGDB_MODE=top-monthly, monthly window + genre allowlist, best-effort genres/game_genre pivot) + validated (cargo check)",
+    "dependencies": ["Harden IGDB title-schema detection when video_game_sources table missing"],
+    "status": "complete"
+  },
+  {
+    "task": "Default unified-ingest IGDB to top-monthly mode",
+    "priority": "high",
+    "progress": "implemented (sets IGDB_MODE=top-monthly if missing) + validated (cargo check)",
+    "dependencies": ["Implement IGDB top-monthly genre ingest (top 50)"],
+    "status": "complete"
+  },
+  {
+    "task": "Validate IGDB top-monthly writes against Laravel genres pivot",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Implement IGDB top-monthly genre ingest (top 50)"],
+    "status": "pending"
+  },
+  {
+    "task": "Smoke-run unified ingest monthly mode (except Xbox)",
+    "priority": "high",
+    "progress": "pending",
+    "dependencies": ["Default unified-ingest IGDB to top-monthly mode", "Run unified ingest (except Xbox) and confirm php-compat safety"],
+    "status": "pending"
+  },
+  {
+    "task": "Extract ProductPriceResolver and delegate ProductPresenter pricing",
+    "priority": "high",
+    "progress": "validated (php artisan test)",
+    "dependencies": [],
+    "status": "complete"
+  },
+  {
+    "task": "Align ProductPriceResolver caching with compare cache store",
+    "priority": "medium",
+    "progress": "pending",
+    "dependencies": ["Extract ProductPriceResolver and delegate ProductPresenter pricing"],
+    "status": "pending"
+  },
+  {
+    "task": "Enable periodic auto-seed in worker_manager",
+    "priority": "high",
+    "progress": "implemented (MANAGER_AUTO_SEED_INTERVAL_SECS + inflight/visible gating) + validated (cargo check)",
+    "dependencies": [],
+    "status": "complete"
+  },
+  {
+    "task": "Support RAWG/IGDB top modes in ingest_worker",
+    "priority": "high",
+    "progress": "implemented (job args map to RAWG_MODE/IGDB_MODE + env knobs) + validated (cargo check)",
+    "dependencies": [],
+    "status": "complete"
+  },
+  {
+    "task": "Document XAPI.us API integration notes",
+    "priority": "medium",
+    "progress": "added docs/api-docs/xapi-us.md",
+    "dependencies": [],
+    "status": "complete"
   }
 ]

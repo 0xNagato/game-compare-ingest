@@ -7,14 +7,14 @@
 //!   HEALTH_MAX_PERCENT_MISSING_ORIGINAL=50 (optional)
 
 use actix_web::middleware::Logger;
-use actix_web::{App, HttpResponse, HttpServer, Responder, get};
+use actix_web::{get, App, HttpResponse, HttpServer, Responder};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use sqlx::{Pool, Postgres};
 use std::env;
 use std::sync::Arc;
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Serialize)]
 struct HealthPayload {

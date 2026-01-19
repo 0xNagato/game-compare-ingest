@@ -1,1 +1,27 @@
 /target
+
+# Local env (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Xbox Live auth token store (never commit secrets)
+.xbox_tokens.json
+
+# Editor / local tooling artifacts
+.vscode/*.log
+
+# Local logs / scratch output
+tmp_logs/
+*.log
+*.log.prev
+ps-debug.log
+tmp/
+tmp_logs/
+tmp_ingest/
+node_modules/*
+node_modules/**/node_modules/
+.mcp.json
+*.scratch
+hellogenai/*
+node_modules

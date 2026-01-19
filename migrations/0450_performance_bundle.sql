@@ -34,30 +34,30 @@ ALTER TABLE IF EXISTS video_game_titles
     to_tsvector('english', coalesce(title,'') || ' ' || coalesce(normalized_title,''))
   ) STORED;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS video_game_titles_search_idx
+CREATE INDEX IF NOT EXISTS video_game_titles_search_idx
   ON video_game_titles USING gin(search_vector);
 
 -- =============================
 -- COVERING INDEXES
 -- =============================
-CREATE INDEX CONCURRENTLY IF NOT EXISTS video_games_title_platform_covering_idx
+CREATE INDEX IF NOT EXISTS video_games_title_platform_covering_idx
   ON video_games (title_id, platform_id)
   INCLUDE (slug, release_date, edition);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS current_price_with_amount_idx
+CREATE INDEX IF NOT EXISTS current_price_with_amount_idx
   ON current_price (offer_jurisdiction_id)
   INCLUDE (amount_minor, recorded_at);
 
 -- =============================
 -- EXPRESSION / FUNCTIONAL / PARTIAL INDEXES
 -- =============================
-CREATE INDEX CONCURRENTLY IF NOT EXISTS products_slug_lower_idx
+CREATE INDEX IF NOT EXISTS products_slug_lower_idx
   ON products (lower(slug));
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS video_games_release_year_idx
+CREATE INDEX IF NOT EXISTS video_games_release_year_idx
   ON video_games ((extract(year FROM release_date)));
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS offers_active_created_idx
+CREATE INDEX IF NOT EXISTS offers_active_created_idx
   ON offers (created_at DESC) WHERE is_active = true;
 
 -- =============================
@@ -189,17 +189,17 @@ BEGIN
           IF r.index_type = 'btree_series' THEN
             idx := format('%s_offer_jurisdiction_id_recorded_at_idx1', r.partition_name);
             IF NOT EXISTS (SELECT 1 FROM pg_class c WHERE c.relname = idx AND c.relkind='i') THEN
-              EXECUTE format('CREATE INDEX CONCURRENTLY %I ON %I (offer_jurisdiction_id, recorded_at);', idx, r.partition_name);
+              EXECUTE format('CREATE INDEX %I ON %I (offer_jurisdiction_id, recorded_at);', idx, r.partition_name);
             END IF;
           ELSIF r.index_type = 'brin_recorded' THEN
             idx := format('%s_recorded_brin_idx', r.partition_name);
             IF NOT EXISTS (SELECT 1 FROM pg_class c WHERE c.relname = idx AND c.relkind='i') THEN
-              EXECUTE format('CREATE INDEX CONCURRENTLY %I ON %I USING brin (recorded_at) WITH (pages_per_range=128);', idx, r.partition_name);
+              EXECUTE format('CREATE INDEX %I ON %I USING brin (recorded_at) WITH (pages_per_range=128);', idx, r.partition_name);
             END IF;
           ELSIF r.index_type = 'btree_recent' THEN
             idx := format('%s_recent_30d_idx', r.partition_name);
             IF NOT EXISTS (SELECT 1 FROM pg_class c WHERE c.relname = idx AND c.relkind='i') THEN
-              EXECUTE format('CREATE INDEX CONCURRENTLY %I ON %I (offer_jurisdiction_id, recorded_at DESC) WHERE recorded_at > now() - interval ''30 days'';', idx, r.partition_name);
+              EXECUTE format('CREATE INDEX %I ON %I (offer_jurisdiction_id, recorded_at DESC) WHERE recorded_at > now() - interval ''30 days'';', idx, r.partition_name);
             END IF;
           END IF;
 

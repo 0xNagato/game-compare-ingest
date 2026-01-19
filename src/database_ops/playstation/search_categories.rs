@@ -80,7 +80,7 @@ pub async fn run_from_env() -> Result<()> {
             }
             for h in list.into_iter().take(10) {
                 println!(
-                    "  product={:?} concept={:?} name={:?}",
+                    "  product={:?} \n \n concept={:?} \n \n name={:?}",
                     h.product_id, h.concept_id, h.name
                 );
             }

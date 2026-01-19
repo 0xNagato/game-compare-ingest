@@ -5,10 +5,12 @@ use tracing::instrument;
 
 use crate::database_ops::db::Db;
 use crate::database_ops::ingest_providers::{
-    ProviderEntityCache, ensure_platform, ensure_provider, ensure_provider_media_links_with_meta,
-    upsert_game_media,
+    ensure_platform, ensure_provider, ensure_vg_source_media_links_with_meta, upsert_game_media,
+    ProviderEntityCache,
 };
 use crate::database_ops::media_map::normalize_title;
+
+const IGDB_PROVIDER_KEY: &str = "igdb";
 
 /// Ingest IGDB-style JSON (array or object) into core entities and media.
 /// Expected fields per item (best-effort):
@@ -99,10 +101,19 @@ async fn handle_one(
     // Create product -> software -> title -> video_game
     let product_id = cache.ensure_product_named("software", &slug, &name).await?;
     cache.ensure_software_row(product_id).await?;
-    let title_id = cache
+    let _title_id = cache
         .ensure_video_game_title(product_id, &name, Some(&slug))
         .await?;
-    let vg_id = cache.ensure_video_game(title_id, platform_id, None).await?;
+    // Laravel schema: use product_id directly
+    let vg_id = cache
+        .ensure_video_game_for_product_laravel(
+            product_id,
+            &name,
+            Some(&slug),
+            Some(Value::Object(obj.clone())),
+            IGDB_PROVIDER_KEY,
+        )
+        .await?;
 
     // External id (stringify whatever IGDB provides)
     let ext_id = obj
@@ -113,7 +124,7 @@ async fn handle_one(
             _ => slug.clone(),
         })
         .unwrap_or_else(|| slug.clone());
-    let provider_item_id = cache
+    let video_game_source_id = cache
         .ensure_provider_item(provider_id, &ext_id, Some(Value::Object(obj.clone())), true)
         .await?;
 
@@ -137,9 +148,9 @@ async fn handle_one(
                 Some(name.clone()),
             )];
             let meta = serde_json::json!({"source":"igdb","hint":"cover"});
-            let _ = ensure_provider_media_links_with_meta(
+            let _ = ensure_vg_source_media_links_with_meta(
                 db,
-                provider_item_id,
+                video_game_source_id,
                 Some(vg_id),
                 &tuples,
                 "igdb",
@@ -177,9 +188,9 @@ async fn handle_one(
         if !tuples.is_empty() {
             let meta =
                 serde_json::json!({"source":"igdb","hint":"screenshots","count": tuples.len()});
-            let _ = ensure_provider_media_links_with_meta(
+            let _ = ensure_vg_source_media_links_with_meta(
                 db,
-                provider_item_id,
+                video_game_source_id,
                 Some(vg_id),
                 &tuples,
                 "igdb",
@@ -224,9 +235,9 @@ async fn handle_one(
         }
         if !tuples.is_empty() {
             let meta = serde_json::json!({"source":"igdb","hint":"videos","count": tuples.len()});
-            let _ = ensure_provider_media_links_with_meta(
+            let _ = ensure_vg_source_media_links_with_meta(
                 db,
-                provider_item_id,
+                video_game_source_id,
                 Some(vg_id),
                 &tuples,
                 "igdb",

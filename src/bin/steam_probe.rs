@@ -37,21 +37,21 @@ async fn main() -> Result<()> {
             .await?;
     let media_count: i64 = sqlx
         ::query_scalar(
-            "SELECT COUNT(*) FROM provider_media_links WHERE provider_item_id IN (SELECT id FROM provider_items WHERE provider_id = $1)"
+            "SELECT COUNT(*) FROM vg_source_media_links WHERE video_game_source_id IN (SELECT id FROM provider_items WHERE provider_id = $1)"
         )
         .persistent(false)
         .bind(pid)
         .fetch_one(&db.pool).await?;
     let price_rows: i64 = sqlx
         ::query_scalar(
-            "SELECT COUNT(*) FROM prices p JOIN provider_items pi ON p.provider_item_id = pi.id WHERE pi.provider_id = $1"
+            "SELECT COUNT(*) FROM prices p JOIN provider_items pi ON p.video_game_source_id = pi.id WHERE pi.provider_id = $1"
         )
         .persistent(false)
         .bind(pid)
         .fetch_one(&db.pool).await?;
     let current_count: i64 = sqlx
         ::query_scalar(
-            "SELECT COUNT(*) FROM current_price cp JOIN offer_jurisdictions oj ON cp.offer_jurisdiction_id = oj.id JOIN offers o ON oj.offer_id = o.id JOIN provider_offers pof ON pof.offer_id = o.id JOIN provider_items pi ON pof.provider_item_id = pi.id WHERE pi.provider_id = $1"
+            "SELECT COUNT(*) FROM current_price cp JOIN offer_jurisdictions oj ON cp.offer_jurisdiction_id = oj.id JOIN offers o ON oj.offer_id = o.id JOIN provider_offers pof ON pof.offer_id = o.id JOIN provider_items pi ON pof.video_game_source_id = pi.id WHERE pi.provider_id = $1"
         )
         .persistent(false)
         .bind(pid)
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     // Sample prices
     let sample_prices = sqlx
         ::query(
-            r#"SELECT p.recorded_at, p.amount_minor, pi.external_id, (p.meta->>'kind') AS kind FROM prices p JOIN provider_items pi ON p.provider_item_id = pi.id WHERE pi.provider_id = $1 ORDER BY p.recorded_at DESC LIMIT 5"#
+            r#"SELECT p.recorded_at, p.amount_minor, pi.external_id, (p.meta->>'kind') AS kind FROM prices p JOIN provider_items pi ON p.video_game_source_id = pi.id WHERE pi.provider_id = $1 ORDER BY p.recorded_at DESC LIMIT 5"#
         )
         .persistent(false)
         .bind(pid)
@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     // Sample media (show kind + title for classification)
     let sample_media = sqlx
         ::query(
-            "SELECT kind, title, url FROM provider_media_links WHERE provider_item_id IN (SELECT id FROM provider_items WHERE provider_id = $1) LIMIT 5"
+            "SELECT kind, title, url FROM vg_source_media_links WHERE video_game_source_id IN (SELECT id FROM provider_items WHERE provider_id = $1) LIMIT 5"
         )
         .persistent(false)
         .bind(pid)

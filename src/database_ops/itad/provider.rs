@@ -1,17 +1,25 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
+fn truncate_for_log(mut s: String, max_len: usize) -> String {
+    if s.len() > max_len {
+        s.truncate(max_len);
+        s.push_str("…");
+    }
+    s
+}
+
 /// ITAD (IsThereAnyDeal) Provider for pricing and media data
-/// Public API: https://api.isthereanydeal.com/v2/
+/// Public API (base): https://api.isthereanydeal.com/
 ///
 /// Key endpoints:
-/// - /search/search/{query} - Search for games
-/// - /game/overview/{game_id} - Get game details with media
-/// - /deals/latest - Get latest deals
-/// - /charts - Get chart data (trending, popular, etc.)
+/// - GET /games/search/v1?title=... - Search for games
+/// - GET /games/info/v2?id=... - Get game details with assets (media)
+/// - GET /deals/v2 - Get latest deals list (paged)
+/// - (Optional) charts endpoints exist but are not required for price ingest
 ///
 /// Media support:
 /// - Game cover image
@@ -21,8 +29,8 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub struct ItadProvider {
     base_url: String,
-    timeout_secs: u64,
     http: Client,
+    api_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,7 +72,7 @@ pub struct ItadResponse<T> {
 impl ItadProvider {
     pub fn new(base_url: Option<&str>, timeout_secs: Option<u64>) -> Result<Self> {
         let base_url = base_url
-            .unwrap_or("https://api.isthereanydeal.com/v2")
+            .unwrap_or("https://api.isthereanydeal.com")
             .trim_end_matches('/')
             .to_string();
         let timeout_secs = timeout_secs.unwrap_or(15);
@@ -75,43 +83,123 @@ impl ItadProvider {
 
         Ok(Self {
             base_url,
-            timeout_secs,
             http,
+            api_key: None,
         })
+    }
+
+    pub fn with_api_key(mut self, api_key: Option<String>) -> Self {
+        self.api_key = api_key.filter(|s| !s.trim().is_empty());
+        self
+    }
+
+    fn add_auth_query<'a>(&'a self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match self.api_key.as_deref() {
+            Some(key) => req.query(&[("key", key)]),
+            None => req,
+        }
+    }
+
+    fn value_as_f64(v: &Value) -> Option<f64> {
+        if let Some(n) = v.as_f64() {
+            return Some(n);
+        }
+        if let Some(n) = v.as_i64() {
+            return Some(n as f64);
+        }
+        if let Some(s) = v.as_str() {
+            return s.parse::<f64>().ok();
+        }
+        None
+    }
+
+    fn extract_asset_url(obj: &Value, key: &str) -> Option<String> {
+        obj.get("assets")
+            .and_then(|a| a.get(key))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
+
+    fn extract_screenshots(obj: &Value) -> Vec<String> {
+        let mut out = Vec::new();
+        let Some(arr) = obj
+            .get("assets")
+            .and_then(|a| a.get("screenshots"))
+            .and_then(|v| v.as_array())
+        else {
+            return out;
+        };
+
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                if !s.trim().is_empty() {
+                    out.push(s.to_string());
+                }
+                continue;
+            }
+            if let Some(s) = item.get("url").and_then(|v| v.as_str()) {
+                if !s.trim().is_empty() {
+                    out.push(s.to_string());
+                }
+            }
+        }
+
+        out
+    }
+
+    fn extract_videos(obj: &Value) -> Vec<String> {
+        let mut out = Vec::new();
+        let Some(arr) = obj
+            .get("assets")
+            .and_then(|a| a.get("videos"))
+            .and_then(|v| v.as_array())
+        else {
+            return out;
+        };
+
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                if !s.trim().is_empty() {
+                    out.push(s.to_string());
+                }
+                continue;
+            }
+            if let Some(s) = item.get("url").and_then(|v| v.as_str()) {
+                if !s.trim().is_empty() {
+                    out.push(s.to_string());
+                }
+            }
+        }
+
+        out
     }
 
     /// Search for a game by title
     pub async fn search_game(&self, query: &str) -> Result<Vec<ItadGame>> {
-        let url = format!(
-            "{}/search/search/{}",
-            self.base_url,
-            urlencoding::encode(query)
-        );
+        let url = format!("{}/games/search/v1", self.base_url);
 
-        let resp = self
+        let req = self
             .http
             .get(&url)
             .header("Accept", "application/json")
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            return Err(anyhow!("ITAD search failed: {}", resp.status()));
+            .query(&[("title", query)]);
+        let resp = self.add_auth_query(req).send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = truncate_for_log(resp.text().await.unwrap_or_default(), 2000);
+            return Err(anyhow!(
+                "ITAD search failed: {status} url={url} body={body}"
+            ));
         }
 
         let body: Value = resp.json().await?;
 
         let mut games = Vec::new();
-        if let Some(results) = body
-            .get("data")
-            .and_then(|d| d.get("results"))
-            .and_then(|r| r.as_array())
-        {
+        if let Some(results) = body.as_array() {
             for item in results {
-                if let (Some(id), Some(title)) = (
-                    item.get("id").and_then(|v| v.as_str()),
-                    item.get("title").and_then(|v| v.as_str()),
-                ) {
+                let id = item.get("id").and_then(|v| v.as_str());
+                let title = item.get("title").and_then(|v| v.as_str());
+                if let (Some(id), Some(title)) = (id, title) {
                     games.push(ItadGame {
                         id: id.to_string(),
                         title: title.to_string(),
@@ -120,15 +208,10 @@ impl ItadProvider {
                             .and_then(|v| v.as_str())
                             .unwrap_or(id)
                             .to_string(),
-                        image_url: item
-                            .get("image")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string()),
-                        store_count: item
-                            .get("storeCount")
-                            .and_then(|v| v.as_i64())
-                            .map(|v| v as i32),
-                        lowest_price: item.get("lowestPrice").and_then(|v| v.as_f64()),
+                        image_url: Self::extract_asset_url(item, "boxart")
+                            .or_else(|| Self::extract_asset_url(item, "banner")),
+                        store_count: None,
+                        lowest_price: None,
                     });
                 }
             }
@@ -139,45 +222,51 @@ impl ItadProvider {
 
     /// Get game overview with details and media
     pub async fn game_overview(&self, game_id: &str) -> Result<(ItadGame, Vec<ItadMedia>)> {
-        let url = format!("{}/game/overview/{}", self.base_url, game_id);
+        let url = format!("{}/games/info/v2", self.base_url);
 
-        let resp = self
+        let req = self
             .http
             .get(&url)
             .header("Accept", "application/json")
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            return Err(anyhow!("ITAD overview failed: {}", resp.status()));
+            .query(&[("id", game_id)]);
+        let resp = self.add_auth_query(req).send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = truncate_for_log(resp.text().await.unwrap_or_default(), 2000);
+            return Err(anyhow!(
+                "ITAD overview failed: {status} url={url} game_id={game_id} body={body}"
+            ));
         }
 
         let body: Value = resp.json().await?;
 
-        let game_data = body.get("data").and_then(|d| d.get("game"));
-
-        if game_data.is_none() {
-            return Err(anyhow!("No game data in ITAD response"));
+        // /games/info/v2 returns a single object (not wrapped in {data: ...}).
+        if !body.is_object() {
+            return Err(anyhow!(
+                "Unexpected ITAD game info response shape (expected object)"
+            ));
         }
 
-        let game_data = game_data.unwrap();
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        let slug = body
+            .get("slug")
+            .and_then(|v| v.as_str())
+            .unwrap_or(game_id)
+            .to_string();
+
+        let image_url = Self::extract_asset_url(&body, "boxart")
+            .or_else(|| Self::extract_asset_url(&body, "banner"));
 
         let game = ItadGame {
             id: game_id.to_string(),
-            title: game_data
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown")
-                .to_string(),
-            slug: game_data
-                .get("slug")
-                .and_then(|v| v.as_str())
-                .unwrap_or(game_id)
-                .to_string(),
-            image_url: game_data
-                .get("image")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+            title,
+            slug,
+            image_url,
             store_count: None,
             lowest_price: None,
         };
@@ -186,7 +275,7 @@ impl ItadProvider {
         let mut media = Vec::new();
 
         // Cover image
-        if let Some(img) = game_data.get("image").and_then(|v| v.as_str()) {
+        if let Some(img) = game.image_url.as_deref().filter(|s| !s.trim().is_empty()) {
             media.push(ItadMedia {
                 game_id: game_id.to_string(),
                 url: img.to_string(),
@@ -195,51 +284,24 @@ impl ItadProvider {
             });
         }
 
-        // Screenshots from screenshot array
-        if let Some(screenshots) = game_data.get("screenshots").and_then(|v| v.as_array()) {
-            for (idx, screenshot) in screenshots.iter().enumerate() {
-                if let Some(url) = screenshot.as_str() {
-                    media.push(ItadMedia {
-                        game_id: game_id.to_string(),
-                        url: url.to_string(),
-                        r#type: "image".to_string(),
-                        role: format!("screenshot_{}", idx),
-                    });
-                } else if let Some(url) = screenshot.get("image").and_then(|v| v.as_str()) {
-                    media.push(ItadMedia {
-                        game_id: game_id.to_string(),
-                        url: url.to_string(),
-                        r#type: "image".to_string(),
-                        role: format!("screenshot_{}", idx),
-                    });
-                }
-            }
+        // Screenshots
+        for (idx, url) in Self::extract_screenshots(&body).into_iter().enumerate() {
+            media.push(ItadMedia {
+                game_id: game_id.to_string(),
+                url,
+                r#type: "image".to_string(),
+                role: format!("screenshot_{idx}"),
+            });
         }
 
-        // Videos/trailers
-        if let Some(videos) = game_data.get("videos").and_then(|v| v.as_array()) {
-            for (_idx, video) in videos.iter().enumerate() {
-                if let Some(url) = video.as_str() {
-                    media.push(ItadMedia {
-                        game_id: game_id.to_string(),
-                        url: url.to_string(),
-                        r#type: "video".to_string(),
-                        role: "trailer".to_string(),
-                    });
-                } else if let Some(url) = video.get("url").and_then(|v| v.as_str()) {
-                    let video_type = video
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("video")
-                        .to_string();
-                    media.push(ItadMedia {
-                        game_id: game_id.to_string(),
-                        url: url.to_string(),
-                        r#type: "video".to_string(),
-                        role: video_type,
-                    });
-                }
-            }
+        // Videos
+        for url in Self::extract_videos(&body) {
+            media.push(ItadMedia {
+                game_id: game_id.to_string(),
+                url,
+                r#type: "video".to_string(),
+                role: "video".to_string(),
+            });
         }
 
         Ok((game, media))
@@ -252,70 +314,122 @@ impl ItadProvider {
         limit: Option<u32>,
         offset: Option<u32>,
     ) -> Result<Vec<ItadDeal>> {
+        self.get_latest_deals_for_country(limit, offset, None).await
+    }
+
+    /// Get latest deals, optionally scoped to a country.
+    pub async fn get_latest_deals_for_country(
+        &self,
+        limit: Option<u32>,
+        offset: Option<u32>,
+        country: Option<&str>,
+    ) -> Result<Vec<ItadDeal>> {
         let limit = limit.unwrap_or(100).min(500); // API max is 500
         let offset = offset.unwrap_or(0);
 
-        let url = format!(
-            "{}/deals/latest?limit={}&offset={}",
-            self.base_url, limit, offset
-        );
-
-        let resp = self
+        let url = format!("{}/deals/v2", self.base_url);
+        let mut req = self
             .http
             .get(&url)
             .header("Accept", "application/json")
-            .send()
-            .await?;
+            .query(&[("limit", limit.to_string()), ("offset", offset.to_string())]);
+        if let Some(country) = country {
+            req = req.query(&[("country", country)]);
+        }
 
-        if !resp.status().is_success() {
-            return Err(anyhow!("ITAD deals fetch failed: {}", resp.status()));
+        let resp = self.add_auth_query(req).send().await?;
+        let status = resp.status();
+
+        if !status.is_success() {
+            let body = truncate_for_log(resp.text().await.unwrap_or_default(), 2000);
+            return Err(anyhow!(
+                "ITAD deals fetch failed: {status} url={url} country={:?} limit={limit} offset={offset} body={body}",
+                country
+            ));
         }
 
         let body: Value = resp.json().await?;
         let mut deals = Vec::new();
 
-        if let Some(deals_array) = body
-            .get("data")
-            .and_then(|d| d.get("deals"))
-            .and_then(|r| r.as_array())
-        {
-            for deal in deals_array {
-                if let (Some(game_id), Some(shop), Some(price)) = (
-                    deal.get("gameID").and_then(|v| v.as_str()),
-                    deal.get("shop").and_then(|v| v.as_object()),
-                    deal.get("price").and_then(|v| v.as_f64()),
-                ) {
-                    let shop_id = shop.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let shop_name = shop
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown");
-                    let regular_price = deal
-                        .get("regularPrice")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(price);
-                    let discount = ((1.0 - price / regular_price) * 100.0).round() as i32;
+        let Some(deals_array) = body.get("list").and_then(|v| v.as_array()) else {
+            // Defensive: keep a helpful error for unexpected shapes (prevents silent 0 deals).
+            return Err(anyhow!(
+                "Unexpected ITAD deals response shape (missing 'list' array)"
+            ));
+        };
 
-                    deals.push(ItadDeal {
-                        game_id: game_id.to_string(),
-                        store_id: shop_id.to_string(),
-                        store_name: shop_name.to_string(),
-                        price,
-                        regular_price,
-                        discount: discount.max(0),
-                        url: deal
-                            .get("url")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                        currency: deal
-                            .get("currency")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("USD")
-                            .to_string(),
-                    });
-                }
-            }
+        for item in deals_array {
+            // Common structure in docs: { deal: {...}, game: {...} }
+            let deal_obj = item.get("deal").unwrap_or(item);
+            let game_obj = item.get("game").unwrap_or(&Value::Null);
+
+            let game_id = game_obj
+                .get("id")
+                .and_then(|v| v.as_str())
+                .or_else(|| deal_obj.get("gameId").and_then(|v| v.as_str()))
+                .or_else(|| deal_obj.get("gameID").and_then(|v| v.as_str()));
+
+            let shop_obj = deal_obj.get("shop");
+            let shop_id = shop_obj
+                .and_then(|s| s.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let shop_name = shop_obj
+                .and_then(|s| s.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+
+            let price = deal_obj
+                .get("price")
+                .and_then(|p| p.get("amount"))
+                .and_then(Self::value_as_f64)
+                .or_else(|| deal_obj.get("price").and_then(Self::value_as_f64));
+
+            let regular_price = deal_obj
+                .get("regular")
+                .and_then(|p| p.get("amount"))
+                .and_then(Self::value_as_f64)
+                .or_else(|| deal_obj.get("regularPrice").and_then(Self::value_as_f64));
+
+            let currency = deal_obj
+                .get("price")
+                .and_then(|p| p.get("currency"))
+                .and_then(|v| v.as_str())
+                .or_else(|| deal_obj.get("currency").and_then(|v| v.as_str()))
+                .unwrap_or("USD")
+                .to_string();
+
+            let Some(game_id) = game_id else {
+                continue;
+            };
+            let Some(price) = price else {
+                continue;
+            };
+
+            let regular_price = regular_price.unwrap_or(price);
+            let discount = deal_obj
+                .get("cut")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32)
+                .unwrap_or_else(|| ((1.0 - price / regular_price) * 100.0).round() as i32)
+                .max(0);
+
+            let url = deal_obj
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            deals.push(ItadDeal {
+                game_id: game_id.to_string(),
+                store_id: shop_id.to_string(),
+                store_name: shop_name.to_string(),
+                price,
+                regular_price,
+                discount,
+                url,
+                currency,
+            });
         }
 
         Ok(deals)
@@ -324,17 +438,19 @@ impl ItadProvider {
     /// Get popular/trending games
     pub async fn get_trending(&self, limit: Option<u32>) -> Result<Vec<ItadGame>> {
         let limit = limit.unwrap_or(50).min(100);
+        // NOTE: Charts endpoints have changed across ITAD API iterations and are not required
+        // for the price ingest flow. We keep this method best-effort.
         let url = format!("{}/charts/popular?limit={}", self.base_url, limit);
 
-        let resp = self
-            .http
-            .get(&url)
-            .header("Accept", "application/json")
-            .send()
-            .await?;
+        let req = self.http.get(&url).header("Accept", "application/json");
+        let resp = self.add_auth_query(req).send().await?;
+        let status = resp.status();
 
-        if !resp.status().is_success() {
-            return Err(anyhow!("ITAD trending fetch failed: {}", resp.status()));
+        if !status.is_success() {
+            let body = truncate_for_log(resp.text().await.unwrap_or_default(), 2000);
+            return Err(anyhow!(
+                "ITAD trending fetch failed: {status} url={url} limit={limit} body={body}"
+            ));
         }
 
         let body: Value = resp.json().await?;

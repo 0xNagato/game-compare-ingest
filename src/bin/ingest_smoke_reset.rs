@@ -90,7 +90,7 @@ async fn drop_all(db: &Db) -> Result<()> {
     let tables = [
         "prices",
         "current_price",
-        "provider_media_links",
+        "vg_source_media_links",
         "game_images",
         "game_videos",
         "video_game_ratings_by_locale",

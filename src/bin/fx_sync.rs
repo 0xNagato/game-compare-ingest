@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use i_miss_rust::database_ops::{db::Db, exchange::ExchangeService};
 use std::time::Duration;
-use tracing_subscriber::{EnvFilter, fmt::SubscriberBuilder};
+use tracing_subscriber::{fmt::SubscriberBuilder, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {

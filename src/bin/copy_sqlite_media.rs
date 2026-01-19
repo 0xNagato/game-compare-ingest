@@ -13,16 +13,63 @@
 //! - Upserts on (video_game_id, source, external_id) — external_id should uniquely identify
 //!   the media item for that source (commonly the media URL itself).
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use futures::SinkExt;
 use rusqlite::Connection;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::client::WebPkiServerVerifier;
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{ClientConfig, RootCertStore};
 use rustls_native_certs::load_native_certs;
 use std::collections::HashSet;
+use std::sync::Arc;
 use tokio_postgres::Client;
 use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
+use webpki_roots::TLS_SERVER_ROOTS;
+
+/// See `src/bin/migrate_one.rs`: Postgres `sslmode=require` means "encrypt" but does not
+/// mandate verifying that the server cert chains to a trusted CA.
+#[derive(Debug)]
+struct InsecureSslModeRequireVerifier {
+    inner: Arc<dyn ServerCertVerifier>,
+}
+
+impl ServerCertVerifier for InsecureSslModeRequireVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.inner.supported_verify_schemes()
+    }
+}
 
 /// Return true if an env var (case-insensitive) is set to a truthy value.
 fn env_flag(name: &str) -> bool {
@@ -147,9 +194,22 @@ fn video_game_id_expr(
         let has_video_games = table_exists(conn, "video_games")?;
         let has_titles = table_exists(conn, "video_game_titles")?;
         if has_video_games && has_titles {
-            Ok(format!(
-                "(SELECT vg.id FROM video_games vg JOIN video_game_titles vgt ON vg.title_id = vgt.id WHERE vgt.product_id = {alias}.product_id ORDER BY vg.id LIMIT 1) AS video_game_id"
-            ))
+            let vgt_cols = sqlite_columns(conn, "video_game_titles")?;
+            if vgt_cols.contains("product_id") {
+                Ok(format!(
+                    "(SELECT vg.id FROM video_games vg JOIN video_game_titles vgt ON vg.title_id = vgt.id WHERE vgt.product_id = {alias}.product_id ORDER BY vg.id LIMIT 1) AS video_game_id"
+                ))
+            } else {
+                // Fallback: check if video_games has product_id directly
+                let vg_cols = sqlite_columns(conn, "video_games")?;
+                if vg_cols.contains("product_id") {
+                    Ok(format!(
+                        "(SELECT vg.id FROM video_games vg WHERE vg.product_id = {alias}.product_id ORDER BY vg.id LIMIT 1) AS video_game_id"
+                    ))
+                } else {
+                    bail!("Neither video_game_titles nor video_games has product_id column");
+                }
+            }
         } else {
             bail!(
                 "table '{table}' lacks video_game_id and cannot derive it without video_games/video_game_titles"
@@ -292,6 +352,9 @@ fn guess_media_type_from_url(url: &str) -> &'static str {
         || lower.ends_with(".webm")
         || lower.ends_with(".mov")
         || lower.contains("/video/")
+        || lower.contains("youtube.com")
+        || lower.contains("vimeo.com")
+        || lower.contains("vulcan.dl")
     {
         "video"
     } else if lower.ends_with(".mp3") || lower.ends_with(".ogg") || lower.ends_with(".wav") {
@@ -305,9 +368,9 @@ fn normalize_media_type(raw: &str, url: &str) -> String {
     let trimmed = raw.trim().to_ascii_lowercase();
     if trimmed.is_empty() {
         guess_media_type_from_url(url).to_string()
-    } else if matches!(trimmed.as_str(), "img" | "picture" | "image") {
+    } else if matches!(trimmed.as_str(), "img" | "picture" | "image" | "cover" | "artwork" | "thumbnail" | "thumb" | "banner" | "hero" | "background") {
         "image".to_string()
-    } else if matches!(trimmed.as_str(), "vid" | "movie" | "clip" | "video") {
+    } else if matches!(trimmed.as_str(), "vid" | "trailer" | "clip" | "video" | "vulcan.dl" | "preview" | "youtube" | "vimeo" | "podcast") {
         "video".to_string()
     } else if matches!(trimmed.as_str(), "audio" | "music") {
         "audio".to_string()
@@ -397,9 +460,9 @@ async fn main() -> Result<()> {
         println!("copy_sqlite_media: FAST_INGEST session settings applied");
     }
 
-    // Ensure we write to public schema
+    // Ensure we write to public schema but keep extensions visible
     pg_client
-        .batch_execute("SET search_path TO public;")
+        .batch_execute("SET search_path TO public, extensions, ext;")
         .await
         .context("set search_path")?;
 
@@ -460,6 +523,8 @@ CREATE TEMP TABLE IF NOT EXISTS _gm_copy (
         env_flag("MEDIA_SKIP_EMPTY_EXTERNAL_ID") || env_flag("SKIP_EMPTY_EXTERNAL_ID");
     // Default behavior: require URL to be present. Opt-in MEDIA_ALLOW_EMPTY_URL=1 to bypass skip.
     let allow_empty_url = env_flag("MEDIA_ALLOW_EMPTY_URL") || env_flag("ALLOW_EMPTY_URL");
+    // Dedupe within a single run. Key is (video_game_id, url_key) so the same URL can
+    // still be associated to multiple games.
     let mut seen_urls: HashSet<String> = HashSet::new();
     while let Some(row) = rows.next()? {
         let video_game_id: i64 = row.get(0)?;
@@ -493,7 +558,8 @@ CREATE TEMP TABLE IF NOT EXISTS _gm_copy (
             if url_key.is_empty() {
                 url_key = original_url.trim().to_string();
             }
-            if !url_key.is_empty() && !seen_urls.insert(url_key.clone()) {
+            let dedupe_key = format!("{}|{}", video_game_id, url_key);
+            if !url_key.is_empty() && !seen_urls.insert(dedupe_key) {
                 skipped_duplicate_url += 1;
                 total_read += 1;
                 if limit > 0 && total_read >= limit {
@@ -552,46 +618,56 @@ CREATE TEMP TABLE IF NOT EXISTS _gm_copy (
 
     if dry_run {
         println!(
-            "copy_sqlite_media: DRY_RUN set, skipping upsert into game_media. Staged rows: {}",
+                        "copy_sqlite_media: DRY_RUN set, skipping upsert into canonical_media. Staged rows: {}",
             copied
         );
     } else {
-        // Upsert into public.game_media
+        // Upsert into public.canonical_media
         let upsert_sql = r#"
-INSERT INTO public.game_media (
-  video_game_id, source, external_id, media_type, kind, title, url,
-  original_url, thumbnail_url, stream_url, poster_url, provider_data
+INSERT INTO canonical_media (
+  url,
+  url_hash,
+  metadata
 )
 SELECT
-  video_game_id,
-  source,
-  external_id,
-  media_type,
-  NULLIF(kind, '') as kind,
-  NULLIF(title, '') as title,
-  url,
-  NULLIF(original_url, ''),
-  NULLIF(thumbnail_url, ''),
-  NULLIF(stream_url, ''),
-  NULLIF(poster_url, ''),
-  CASE WHEN provider_data_text IS NULL OR provider_data_text = '' THEN NULL ELSE provider_data_text::jsonb END
-FROM _gm_copy
-ON CONFLICT (video_game_id, source, external_id) DO UPDATE SET
-  media_type    = EXCLUDED.media_type,
-  kind          = COALESCE(EXCLUDED.kind, game_media.kind),
-  title         = COALESCE(EXCLUDED.title, game_media.title),
-  url           = EXCLUDED.url,
-  original_url  = COALESCE(EXCLUDED.original_url, game_media.original_url),
-  thumbnail_url = COALESCE(EXCLUDED.thumbnail_url, game_media.thumbnail_url),
-  stream_url    = COALESCE(EXCLUDED.stream_url, game_media.stream_url),
-  poster_url    = COALESCE(EXCLUDED.poster_url, game_media.poster_url),
-  provider_data = COALESCE(EXCLUDED.provider_data, game_media.provider_data)
+  c.url,
+    canonical_media_url_hash(c.video_game_id::text || '|' || c.url),
+  (
+    COALESCE(NULLIF(c.provider_data_text, ''), '{}')::jsonb ||
+    jsonb_strip_nulls(jsonb_build_object(
+            'video_game_source_id', vgs_match.id,
+      'video_game_id', c.video_game_id,
+      'source', c.source,
+      'media_type', c.media_type,
+      'title', c.title,
+      'external_id', c.external_id,
+      'kind', NULLIF(c.kind, ''),
+      'original_url', NULLIF(c.original_url, ''),
+      'thumbnail_url', NULLIF(c.thumbnail_url, ''),
+      'stream_url', NULLIF(c.stream_url, ''),
+      'poster_url', NULLIF(c.poster_url, '')
+    ))
+  )
+FROM _gm_copy c
+LEFT JOIN LATERAL (
+    SELECT vgs.id
+    FROM video_game_sources vgs
+    WHERE vgs.video_game_id = c.video_game_id
+        AND vgs.provider = c.source
+    ORDER BY vgs.id
+    LIMIT 1
+) vgs_match ON true
+ON CONFLICT (url_hash) DO UPDATE SET
+  metadata = canonical_media.metadata || EXCLUDED.metadata
 "#;
-        pg_client
-            .batch_execute(upsert_sql)
-            .await
-            .context("upsert into game_media")?;
-        sync_provider_media_links(&pg_client).await?;
+                let affected = pg_client
+                        .execute(upsert_sql, &[])
+                        .await
+                        .context("upsert into canonical_media")?;
+        println!(
+                        "copy_sqlite_media: staged {} rows (skipped_external_id={}, skipped_url={}, skipped_duplicate_url={}); canonical_media upsert affected {} row(s)",
+                        copied, skipped_external_id, skipped_url, skipped_duplicate_url, affected
+        );
     }
 
     // Cleanup temp table
@@ -600,101 +676,21 @@ ON CONFLICT (video_game_id, source, external_id) DO UPDATE SET
         .await
         .ok();
 
-    println!(
-        "copy_sqlite_media: copied {} rows (skipped_external_id={}, skipped_url={}, skipped_duplicate_url={}) into temp table and upserted into game_media",
-        copied, skipped_external_id, skipped_url, skipped_duplicate_url
-    );
     Ok(())
 }
 
-async fn sync_provider_media_links(pg_client: &Client) -> Result<()> {
-    let sql = r#"
-WITH candidate AS (
-    SELECT DISTINCT
-        video_game_id,
-        NULLIF(source,'') AS source,
-        NULLIF(external_id,'') AS external_id,
-        NULLIF(media_type,'') AS media_type,
-        NULLIF(kind,'') AS kind,
-        NULLIF(title,'') AS title,
-        NULLIF(url,'') AS url,
-        NULLIF(provider_data_text,'') AS provider_data_text
-    FROM _gm_copy
-), provider_ready AS (
-    SELECT
-        c.video_game_id,
-        c.source,
-        c.external_id,
-        COALESCE(c.media_type, 'image') AS media_type,
-        c.kind,
-        c.title,
-        c.url,
-        COALESCE(NULLIF(c.provider_data_text,''), '{}')::jsonb AS provider_data,
-        p.id AS provider_id,
-        ('media:' || COALESCE(NULLIF(c.url,''), COALESCE(c.external_id, 'missing'))) AS item_external_id
-    FROM candidate c
-    JOIN providers p ON lower(p.slug) = lower(c.source)
-    WHERE c.url IS NOT NULL AND c.url <> ''
-), upsert_items AS (
-    INSERT INTO provider_items (provider_id, external_id, kind, metadata)
-    SELECT
-        provider_id,
-        item_external_id,
-        COALESCE(kind, media_type),
-        provider_data || jsonb_build_object('source', source, 'url', url)
-    FROM provider_ready
-    ON CONFLICT (provider_id, external_id) DO UPDATE
-        SET kind = COALESCE(EXCLUDED.kind, provider_items.kind),
-            metadata = COALESCE(provider_items.metadata, EXCLUDED.metadata)
-    RETURNING provider_id, external_id, id
-)
-INSERT INTO provider_media_links (provider_item_id, media_id, url, video_game_id, media_type, title, role, source, metadata)
-SELECT DISTINCT
-    pi.id,
-    gm.id,
-    pr.url,
-    pr.video_game_id,
-    pr.media_type,
-    pr.title,
-    pr.kind,
-    pr.source,
-    pr.provider_data || jsonb_build_object('import', 'copy_sqlite_media')
-FROM provider_ready pr
-JOIN provider_items pi ON pi.provider_id = pr.provider_id AND pi.external_id = pr.item_external_id
-LEFT JOIN game_media gm ON gm.video_game_id = pr.video_game_id AND gm.url = pr.url
-ON CONFLICT (provider_item_id, url) DO UPDATE
-    SET media_id = COALESCE(provider_media_links.media_id, EXCLUDED.media_id),
-        video_game_id = COALESCE(provider_media_links.video_game_id, EXCLUDED.video_game_id),
-        metadata = provider_media_links.metadata || EXCLUDED.metadata,
-        title = COALESCE(provider_media_links.title, EXCLUDED.title),
-        role = COALESCE(provider_media_links.role, EXCLUDED.role),
-        media_type = COALESCE(provider_media_links.media_type, EXCLUDED.media_type),
-        source = COALESCE(provider_media_links.source, EXCLUDED.source);
-"#;
-    pg_client
-        .batch_execute(sql)
-        .await
-        .context("sync provider media links")?;
-    Ok(())
-}
 
 /// Connect to Postgres using TLS by default, but honor sslmode overrides.
 ///
 /// Selection rules:
-/// - If env PG_SSLMODE/DB_SSLMODE is "disable" (case-insensitive) OR the URL has `?sslmode=disable`, use plaintext (NoTls).
+/// - If the URL contains `sslmode=...`, it is authoritative.
+/// - Otherwise, if env PG_SSLMODE/DB_SSLMODE is set, use that.
+/// - If sslmode is "disable", use plaintext (NoTls).
 /// - If sslmode is "require"/"verify-full" or unspecified, use Rustls TLS with system roots.
 /// - If sslmode is "prefer", try TLS first; on TLS handshake failure and local host, fall back to NoTls.
 async fn connect_postgres_auto(url: &str) -> Result<Client> {
-    let sslmode_env = std::env::var("PG_SSLMODE")
-        .ok()
-        .or_else(|| std::env::var("DB_SSLMODE").ok())
-        .unwrap_or_default()
-        .to_lowercase();
-
-    let sslmode_qs = url
-        .splitn(2, '?')
-        .nth(1)
-        .and_then(|qs| {
+    fn sslmode_from_querystring(url: &str) -> Option<String> {
+        url.splitn(2, '?').nth(1).and_then(|qs| {
             qs.split('&').find_map(|kv| {
                 let mut it = kv.splitn(2, '=');
                 match (it.next(), it.next()) {
@@ -705,13 +701,28 @@ async fn connect_postgres_auto(url: &str) -> Result<Client> {
                 }
             })
         })
-        .unwrap_or_default();
+    }
 
-    // Choose effective sslmode; precedence: env > querystring > default
-    let mut sslmode = if !sslmode_env.is_empty() {
-        sslmode_env
-    } else {
-        sslmode_qs
+    let sslmode_url = sslmode_from_querystring(url);
+    let sslmode_env = std::env::var("PG_SSLMODE")
+        .ok()
+        .or_else(|| std::env::var("DB_SSLMODE").ok())
+        .map(|s| s.to_lowercase())
+        .filter(|s| !s.trim().is_empty());
+
+    // Choose effective sslmode; precedence: querystring > env > default
+    let mut sslmode = match (sslmode_url.as_deref(), sslmode_env.as_deref()) {
+        (Some(url_mode), Some(env_mode)) if url_mode != env_mode => {
+            // Avoid printing the DSN (it contains secrets); only log the modes.
+            eprintln!(
+                "copy_sqlite_media: sslmode differs between DSN ({}) and env ({}); honoring DSN",
+                url_mode, env_mode
+            );
+            url_mode.to_string()
+        }
+        (Some(url_mode), _) => url_mode.to_string(),
+        (None, Some(env_mode)) => env_mode.to_string(),
+        (None, None) => String::new(),
     };
     if sslmode.is_empty() {
         // Heuristic default: require for remote (e.g., Supabase), prefer for localhost
@@ -723,15 +734,29 @@ async fn connect_postgres_auto(url: &str) -> Result<Client> {
     }
 
     // Helper to open a TLS connection and spawn the connection task
-    async fn connect_tls(url: &str) -> Result<Client> {
+    async fn connect_tls(url: &str, sslmode: &str) -> Result<Client> {
         let mut roots = RootCertStore::empty();
         let native = load_native_certs();
         for cert in native.certs {
             let _ = roots.add(cert);
         }
-        let config = ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
+        roots.extend(TLS_SERVER_ROOTS.iter().cloned());
+
+        let verify_server_cert = matches!(sslmode, "verify-ca" | "verify-full");
+        let config = if verify_server_cert {
+            ClientConfig::builder()
+                .with_root_certificates(roots)
+                .with_no_client_auth()
+        } else {
+            let inner: Arc<dyn ServerCertVerifier> =
+                WebPkiServerVerifier::builder(roots.into()).build()?;
+            ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(InsecureSslModeRequireVerifier {
+                    inner,
+                }))
+                .with_no_client_auth()
+        };
         let tls = MakeRustlsConnect::new(config);
         let (client, conn) = tokio_postgres::connect(url, tls).await?;
         tokio::spawn(async move {
@@ -758,12 +783,12 @@ async fn connect_postgres_auto(url: &str) -> Result<Client> {
 
     let client = match sslmode.as_str() {
         "disable" => {
-            println!("copy_sqlite_media: PG_SSLMODE=disable (NoTLS)");
+            println!("copy_sqlite_media: sslmode=disable (NoTLS)");
             connect_notls(url).await?
         }
         "prefer" => {
             // Try TLS first, then fallback if local
-            match connect_tls(url).await {
+            match connect_tls(url, &sslmode).await {
                 Ok(c) => {
                     println!("copy_sqlite_media: sslmode=prefer → using TLS");
                     c
@@ -784,7 +809,7 @@ async fn connect_postgres_auto(url: &str) -> Result<Client> {
         // treat require/verify-full/verify-ca as require TLS
         _ => {
             println!("copy_sqlite_media: sslmode={}, using TLS", sslmode);
-            connect_tls(url).await?
+            connect_tls(url, &sslmode).await?
         }
     };
     Ok(client)

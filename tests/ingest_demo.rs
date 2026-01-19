@@ -10,12 +10,22 @@ use i_miss_rust::database_ops::ingest_providers::{
     ensure_offer, ensure_offer_jurisdiction, ensure_product, ensure_provider, ensure_provider_item,
     ensure_retailer, ensure_sellable, ingest_prices, link_provider_offer,
 };
-use sqlx::Row;
 use sqlx::query;
+use sqlx::Row;
 
 #[tokio::test]
 async fn ingest_demo_persistent() -> Result<()> {
     dotenv().ok();
+
+    let run_db_tests = env::var("RUN_DB_TESTS")
+        .ok()
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+    if !run_db_tests {
+        eprintln!("skipping: set RUN_DB_TESTS=1 to run ingest_demo_persistent");
+        return Ok(());
+    }
+
     // Disable auto migrations for this test to avoid legacy media_source enum conversion issues
     // that surface as "invalid input value for enum media_source: \"\"" during the migration
     // phase in environments containing pre-existing rows with blank source values. We only need
@@ -73,7 +83,7 @@ async fn ingest_demo_persistent() -> Result<()> {
     let rows = vec![
         PriceRow {
             offer_jurisdiction_id: oj_id,
-            provider_item_id: Some(item_id),
+            video_game_source_id: Some(item_id),
             recorded_at: earlier,
             amount_minor: 5999,
             tax_inclusive: true,
@@ -83,7 +93,7 @@ async fn ingest_demo_persistent() -> Result<()> {
         },
         PriceRow {
             offer_jurisdiction_id: oj_id,
-            provider_item_id: Some(item_id),
+            video_game_source_id: Some(item_id),
             recorded_at: now,
             amount_minor: 4999,
             tax_inclusive: true,

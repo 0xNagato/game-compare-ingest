@@ -1,10 +1,10 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde_json::Value;
 use sqlx::Row;
 use std::{env, ffi::OsStr, sync::Arc, time::Duration};
 use tokio::{
     task::JoinSet,
-    time::{MissedTickBehavior, interval},
+    time::{interval, MissedTickBehavior},
 };
 use tracing::{debug, error, info};
 

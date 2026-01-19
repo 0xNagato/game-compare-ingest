@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use i_miss_rust::util::env::{db_url, ipv6_db_url, preflight_check};
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr; // bring FromStr trait into scope for PgConnectOptions::from_str
@@ -42,7 +42,14 @@ async fn main() -> Result<()> {
 
     // Create a single connection for migrations and disable statement cache to avoid
     // prepared statement name collisions ("sqlx_s_1 already exists").
-    let connect_options = PgConnectOptions::from_str(&effective_url)?.statement_cache_capacity(0);
+    let mut connect_options =
+        PgConnectOptions::from_str(&effective_url)?.statement_cache_capacity(0);
+
+    // Ensure TLS is enabled when DSN contains sslmode=require
+    if effective_url.contains("sslmode=require") && !effective_url.contains("sslmode=disable") {
+        connect_options = connect_options.ssl_mode(PgSslMode::Require);
+    }
+
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .connect_with(connect_options)
@@ -60,7 +67,6 @@ async fn main() -> Result<()> {
 
 // PgBouncer-safe simple runner: executes each .sql file (lexically sorted) using simple protocol
 use sqlx::PgConnection; // Acquire no longer needed
-use tokio_postgres::NoTls;
 async fn simple_run_migrations(
     dir: &Path,
     _conn: &mut PgConnection,
@@ -91,7 +97,8 @@ async fn simple_run_migrations(
     }
     entries.sort();
     // Prefer true Simple Query protocol via tokio-postgres to safely run multi-statement SQL and DO $$ blocks
-    // Use same resolution as above
+    // Use NoTls (sslmode=disable) for IPv6-only connections
+    use tokio_postgres::NoTls;
     let (tp_client, tp_connection) = tokio_postgres
         ::connect(database_url, NoTls).await
         .context(

@@ -9,7 +9,7 @@ use i_miss_rust::util::env as env_util;
 use serde::Serialize;
 use sqlx::{Pool, Postgres};
 use std::env;
-use tracing::{Level, info};
+use tracing::{info, Level};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Serialize)]
@@ -27,7 +27,8 @@ struct MediaHealth {
 async fn main() -> Result<()> {
     env_util::bootstrap_cli("media_health");
     init_tracing();
-    let db_url = env::var("DATABASE_URL").context("DATABASE_URL env var required")?;
+    let db_url = env_util::db_url_prefer_session()
+        .context("Set SUPABASE_IPV6_DB / SUPABASE_DB_URL / DATABASE_URL / DB_URL")?;
     let pool = Pool::<Postgres>::connect(&db_url).await?;
 
     // Use simple dynamic queries (avoid compile-time prepare requirement) for portability.

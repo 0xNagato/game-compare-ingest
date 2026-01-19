@@ -14,16 +14,19 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Backfill provider_media_links.kind based on existing media_type/title/url if null
 DO $$ BEGIN
-  UPDATE public.provider_media_links p
-     SET kind = CASE
-       WHEN p.kind IS NOT NULL THEN p.kind
-       WHEN lower(coalesce(p.media_type,'')) IN ('video') THEN 'video'::media_kind
-       WHEN lower(coalesce(p.media_type,'')) IN ('trailer','gameplay','teaser','clip') THEN 'video'::media_kind
-       WHEN lower(coalesce(p.media_type,'')) IN ('image','screenshot','artwork','cover','hero','logo','icon','poster') THEN 'image'::media_kind
-       WHEN p.url ~* '\\.(mp4|webm|m3u8)$' THEN 'video'::media_kind
-       ELSE 'image'::media_kind
-     END
-   WHERE p.kind IS NULL;
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='provider_media_links')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_media_links' AND column_name='kind') THEN
+    UPDATE public.provider_media_links p
+       SET kind = CASE
+         WHEN p.kind IS NOT NULL THEN p.kind
+         WHEN lower(coalesce(p.media_type,'')) IN ('video') THEN 'video'::media_kind
+         WHEN lower(coalesce(p.media_type,'')) IN ('trailer','gameplay','teaser','clip') THEN 'video'::media_kind
+         WHEN lower(coalesce(p.media_type,'')) IN ('image','screenshot','artwork','cover','hero','logo','icon','poster') THEN 'image'::media_kind
+         WHEN p.url ~* '\\.(mp4|webm|m3u8)$' THEN 'video'::media_kind
+         ELSE 'image'::media_kind
+       END
+     WHERE p.kind IS NULL;
+  END IF;
 END $$;
 
 -- Ensure not null + default going forward
@@ -47,14 +50,18 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- Backfill game_media.kind and title
 DO $$ BEGIN
-  UPDATE public.game_media gm
-     SET kind = CASE
-       WHEN gm.kind IS NOT NULL THEN gm.kind
-       WHEN gm.media_type IN ('trailer','gameplay') THEN 'video'::media_kind
-       ELSE 'image'::media_kind
-     END,
-         title = COALESCE(gm.title, gm.media_type::text)
-   WHERE gm.kind IS NULL OR gm.title IS NULL;
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='game_media')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='game_media' AND column_name='kind')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='game_media' AND column_name='title') THEN
+    UPDATE public.game_media gm
+       SET kind = CASE
+         WHEN gm.kind IS NOT NULL THEN gm.kind
+         WHEN gm.media_type IN ('trailer','gameplay') THEN 'video'::media_kind
+         ELSE 'image'::media_kind
+       END,
+           title = COALESCE(gm.title, gm.media_type::text)
+     WHERE gm.kind IS NULL OR gm.title IS NULL;
+  END IF;
 END $$;
 
 -- Enforce default + not null for kind on game_media
@@ -66,5 +73,16 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 -- Helpful indexes
-CREATE INDEX IF NOT EXISTS provider_media_links_kind_idx ON public.provider_media_links(kind);
-CREATE INDEX IF NOT EXISTS game_media_kind_idx ON public.game_media(kind);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='provider_media_links')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_media_links' AND column_name='kind') THEN
+    CREATE INDEX IF NOT EXISTS provider_media_links_kind_idx ON public.provider_media_links(kind);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='game_media')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='game_media' AND column_name='kind') THEN
+    CREATE INDEX IF NOT EXISTS game_media_kind_idx ON public.game_media(kind);
+  END IF;
+END $$;

@@ -1,23 +1,67 @@
 use anyhow::bail;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use chrono::NaiveDate;
-use futures::TryStreamExt;
+use futures::{future::BoxFuture, TryStreamExt};
 use i_miss_rust::database_ops::db::Db;
 use i_miss_rust::database_ops::ingest_providers::{
-    ProviderEntityCache, ensure_currency, ensure_platform, ensure_provider,
-    ensure_provider_media_links_with_meta, ensure_sellable_for_title, upsert_game_media_batch,
+    ensure_platform, ensure_product_named_with_platform, ensure_provider,
+    ensure_software_row, ensure_video_game_title, ensure_video_game_source,
+    ensure_vg_source_media_links_with_meta, ProviderEntityCache,
+    table_exists,
 };
 use i_miss_rust::util::env::{self, db_url_prefer_session};
+use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions; // requires sqlx feature "sqlite"
 use sqlx::types::Json; // needed for batch video_game metadata updates
 use sqlx::{Row, SqlitePool}; // provided by sqlx when "sqlite" feature is enabled
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
+use url::Url;
+use uuid::Uuid;
 
 const UPDATE_CHUNK: usize = 500;
+const LOOKUP_BATCH_DEFAULT: usize = 512;
+
+fn lookup_batch_size() -> usize {
+    std::env::var("IMPORT_LOOKUP_BATCH")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(LOOKUP_BATCH_DEFAULT)
+}
+
+fn build_rayon_pool() -> Result<Option<Arc<ThreadPool>>> {
+    let disabled = std::env::var("IMPORT_RAYON_DISABLED")
+        .ok()
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+    if disabled {
+        return Ok(None);
+    }
+    let desired_threads = std::env::var("IMPORT_RAYON_THREADS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok());
+    let thread_count = desired_threads.unwrap_or_else(|| {
+        available_parallelism()
+            .map(|n| n.get().saturating_sub(1).max(1))
+            .unwrap_or(1)
+    });
+    if thread_count <= 1 {
+        return Ok(None);
+    }
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(thread_count)
+        .thread_name(|idx| format!("import-rayon-{idx}"))
+        .build()
+        .context("failed to build rayon pool for import_sqlite")?;
+    Ok(Some(Arc::new(pool)))
+}
 
 // Simple MIME type guessers for Giant Bomb media when source rows lack explicit type.
 fn guess_image_mime(url: &str) -> &'static str {
@@ -38,19 +82,84 @@ fn guess_image_mime(url: &str) -> &'static str {
 }
 
 fn guess_video_mime(url: &str) -> &'static str {
+    fn host_matches(host: &str, needle: &str) -> bool {
+        if host == needle {
+            return true;
+        }
+        if host.len() <= needle.len() {
+            return false;
+        }
+        if !host.ends_with(needle) {
+            return false;
+        }
+        host.as_bytes()[host.len() - needle.len() - 1] == b'.'
+    }
+
+    if let Ok(parsed) = Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            let host_lc = host.to_ascii_lowercase();
+            if host_matches(&host_lc, "youtube.com")
+                || host_lc == "youtu.be"
+                || host_matches(&host_lc, "youtube-nocookie.com")
+                || host_matches(&host_lc, "googlevideo.com")
+            {
+                return "video/youtube";
+            }
+            if host_matches(&host_lc, "vimeo.com") || host_matches(&host_lc, "vimeocdn.com") {
+                return "video/vimeo";
+            }
+            if host_matches(&host_lc, "twitch.tv")
+                || host_matches(&host_lc, "twitchcdn.net")
+                || host_matches(&host_lc, "ttvnw.net")
+            {
+                return "video/twitch";
+            }
+            if host_matches(&host_lc, "dailymotion.com") || host_matches(&host_lc, "dmcdn.net") {
+                return "video/dailymotion";
+            }
+            if host_matches(&host_lc, "brightcove.net") || host_matches(&host_lc, "bcovlive.io") {
+                return "video/brightcove";
+            }
+            if host_matches(&host_lc, "wistia.com") || host_matches(&host_lc, "wistia.net") {
+                return "video/wistia";
+            }
+            if host_matches(&host_lc, "streamable.com") {
+                return "video/streamable";
+            }
+            if host_matches(&host_lc, "akamaihd.net")
+                || host_matches(&host_lc, "cloudfront.net")
+                || host_matches(&host_lc, "llnwd.net")
+            {
+                return "application/vnd.apple.mpegurl";
+            }
+        }
+    }
+
     let lower = url.to_ascii_lowercase();
-    if lower.ends_with(".webm") {
-        "video/webm"
-    } else if lower.ends_with(".m3u8") {
+    let lower_path = lower.split(['?', '#']).next().unwrap_or(lower.as_str());
+
+    if lower_path.ends_with(".m3u8") {
         "application/vnd.apple.mpegurl"
-    } else if lower.ends_with(".mpd") {
+    } else if lower_path.ends_with(".mpd") {
         "application/dash+xml"
-    } else if lower.ends_with(".mov") {
+    } else if lower_path.contains(".ism/manifest") || lower_path.ends_with(".ism") {
+        "application/vnd.ms-sstr+xml"
+    } else if lower_path.ends_with(".webm") {
+        "video/webm"
+    } else if lower_path.ends_with(".mkv") {
+        "video/x-matroska"
+    } else if lower_path.ends_with(".ts") {
+        "video/mp2t"
+    } else if lower_path.ends_with(".mov") {
         "video/quicktime"
-    } else if lower.ends_with(".avi") {
+    } else if lower_path.ends_with(".avi") {
         "video/x-msvideo"
-    } else if lower.ends_with(".mpg") || lower.ends_with(".mpeg") {
+    } else if lower_path.ends_with(".mpg") || lower_path.ends_with(".mpeg") {
         "video/mpeg"
+    } else if lower_path.ends_with(".m4v") {
+        "video/x-m4v"
+    } else if lower_path.ends_with(".flv") {
+        "video/x-flv"
     } else {
         "video/mp4"
     }
@@ -61,7 +170,7 @@ fn progress_interval() -> usize {
     std::env::var("PROGRESS_INTERVAL")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(UPDATE_CHUNK)
+        .unwrap_or(500)
 }
 
 /// Video game UPDATE batch size (rows). Override with env VIDEO_GAME_UPDATE_CHUNK.
@@ -69,7 +178,7 @@ fn update_chunk_size() -> usize {
     std::env::var("VIDEO_GAME_UPDATE_CHUNK")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(UPDATE_CHUNK)
+        .unwrap_or(500)
 }
 
 #[derive(Clone)]
@@ -146,6 +255,19 @@ impl Progress {
     }
 }
 
+#[derive(Debug, Clone)]
+struct StageTiming {
+    name: String,
+    elapsed: Duration,
+    success: bool,
+}
+
+impl StageTiming {
+    fn elapsed_ms(&self) -> f64 {
+        self.elapsed.as_secs_f64() * 1000.0
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env::bootstrap_cli("import_sqlite");
@@ -181,7 +303,7 @@ async fn main() -> Result<()> {
     let mut max_conns: u32 = std::env::var("DB_MAX_CONNS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(40);
+        .unwrap_or(100);
     // Optional: force single-connection mode so session-level FAST_INGEST settings apply to all queries.
     if std::env::var("FAST_INGEST_ONE_CONN")
         .ok()
@@ -198,13 +320,13 @@ async fn main() -> Result<()> {
     // Use no-migrate variant to guarantee pure data import.
     let db = Db::connect_no_migrate(&pg_url, max_conns).await?;
 
-    // Optional FAST_INGEST session tweaks: enable with FAST_INGEST=1 (default off).
+    // Optional FAST_INGEST session tweaks: enable with FAST_INGEST=1 (default on).
     // These settings trade durability for speed during one-shot bulk imports.
     // They are applied only for the lifetime of this session.
     if std::env::var("FAST_INGEST")
         .ok()
         .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-        .unwrap_or(false)
+        .unwrap_or(true)
     {
         if let Err(e) = apply_fast_ingest_session(&db).await {
             tracing::warn!(error=?e, "FAST_INGEST session optimization failed; continuing without it");
@@ -215,6 +337,7 @@ async fn main() -> Result<()> {
 
     let mut ctx = ImportContext::new(db, sqlite).await?;
     ctx.run().await?;
+    ctx.emit_stage_summary();
 
     info!(
         "import complete: {} products, {} video games pushed",
@@ -232,15 +355,16 @@ async fn apply_fast_ingest_session(db: &Db) -> Result<()> {
     let work_mem_mb: u32 = std::env::var("FAST_INGEST_WORK_MEM_MB")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(64);
+        .unwrap_or(256);
     let sql = format!(
         concat!(
             "SET synchronous_commit = OFF;",
             "SET statement_timeout = 0;",
             "SET jit = OFF;",
-            "SET work_mem = {}MB;",
-            "SET temp_buffers = '64MB';"
+            "SET work_mem = '{}MB';",
+            "SET temp_buffers = '{}MB';"
         ),
+        work_mem_mb, 2 *
         work_mem_mb
     );
     // Execute as a single batch to avoid borrow/lifetime issues with multiple queries.
@@ -260,8 +384,6 @@ async fn apply_sqlite_perf_pragmas(pool: &SqlitePool) -> Result<()> {
 
     let pragmas = if safe_subset {
         vec![
-            // Enforce read-only behavior at the connection level
-            "PRAGMA query_only=ON;",
             "PRAGMA synchronous=NORMAL;",
             "PRAGMA temp_store=MEMORY;",
             "PRAGMA cache_size=-80000;", // ~80k pages (~80MB) if page_size=1KB
@@ -270,8 +392,6 @@ async fn apply_sqlite_perf_pragmas(pool: &SqlitePool) -> Result<()> {
         ]
     } else {
         vec![
-            // Enforce read-only behavior at the connection level
-            "PRAGMA query_only=ON;",
             "PRAGMA journal_mode=OFF;", // no rollback journal overhead
             "PRAGMA locking_mode=EXCLUSIVE;", // reduce lock churn
             "PRAGMA synchronous=OFF;",  // skip fsync (ok for read-only)
@@ -318,14 +438,15 @@ struct ProductInfo {
     rating: f64,
     metadata: Option<Value>,
     title_id: Option<i64>,
-    sellable_id: Option<i64>,
 }
-
+#[derive(Clone)]
 struct ImportContext {
     // Connections
     db: Db,
     sqlite: SqlitePool,
     cache: ProviderEntityCache,
+    rayon_pool: Option<Arc<ThreadPool>>,
+    stage_timings: Vec<StageTiming>,
 
     // Operational toggles
     skip_titles: bool,
@@ -349,7 +470,6 @@ struct ImportContext {
 
     // Entity/key caches
     title_by_product: HashMap<i64, i64>, // product_id -> title_id
-    sellable_by_title: HashMap<i64, i64>, // title_id -> sellable_id
     vg_combo_map: HashMap<(i64, i64), i64>, // (title_id, platform_id) -> vg_id
     vg_platform_by_vg: HashMap<i64, i64>, // vg_id -> platform_id
     vg_platform_slug: HashMap<i64, String>, // vg_id -> platform.code (slug)
@@ -364,8 +484,302 @@ struct ImportContext {
 }
 
 impl ImportContext {
+    async fn profile_stage<T, F>(&mut self, name: &'static str, func: F) -> Result<T>
+    where
+        F: for<'ctx> FnOnce(&'ctx mut ImportContext) -> BoxFuture<'ctx, Result<T>>,
+    {
+        let start = Instant::now();
+        let result = func(self).await;
+        let elapsed = start.elapsed();
+        let success = result.is_ok();
+        info!(
+            target: "metrics",
+            stage = name,
+            took_ms = format!("{:.2}", elapsed.as_secs_f64() * 1000.0),
+            success,
+            "stage timing"
+        );
+        self.stage_timings.push(StageTiming {
+            name: name.to_string(),
+            elapsed,
+            success,
+        });
+        result
+    }
+
+    fn emit_stage_summary(&self) {
+        if self.stage_timings.is_empty() {
+            return;
+        }
+        let mut timings = self.stage_timings.clone();
+        timings.sort_by_key(|t| Reverse(t.elapsed));
+        let total = timings
+            .iter()
+            .fold(Duration::ZERO, |acc, timing| acc + timing.elapsed);
+        info!(
+            target: "metrics",
+            stages = timings.len(),
+            total_ms = format!("{:.2}", total.as_secs_f64() * 1000.0),
+            "import stage timing summary"
+        );
+        for timing in timings {
+            let pct = if total.as_nanos() == 0 {
+                0.0
+            } else {
+                (timing.elapsed.as_secs_f64() / total.as_secs_f64()) * 100.0
+            };
+            info!(
+                target: "metrics",
+                stage = %timing.name,
+                took_ms = format!("{:.2}", timing.elapsed_ms()),
+                pct = format!("{:.1}", pct),
+                success = timing.success,
+                "stage timing detail"
+            );
+        }
+    }
+
+    fn parallel_filter_map<T, U, F>(&self, rows: Vec<T>, func: F) -> Vec<U>
+    where
+        T: Send,
+        U: Send,
+        F: Fn(T) -> Option<U> + Send + Sync,
+    {
+        if let Some(pool) = &self.rayon_pool {
+            pool.install(|| {
+                let func_ref = &func;
+                rows.into_par_iter()
+                    .filter_map(|row| func_ref(row))
+                    .collect()
+            })
+        } else {
+            rows.into_iter().filter_map(func).collect()
+        }
+    }
+
+    async fn process_currency_chunk(
+        &mut self,
+        rows: Vec<LegacyCurrency>,
+        has_minor_unit: bool,
+        prog: &mut Progress,
+    ) -> Result<usize> {
+        if rows.is_empty() {
+            return Ok(0);
+        }
+        let sanitized = self.parallel_filter_map(rows, |row| {
+            let code = row
+                .code
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_uppercase();
+            if code.len() < 3 {
+                warn!(legacy_id=?row.id, ?code, "skipping currency with short code");
+                return None;
+            }
+            let name = row
+                .name
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&code)
+                .to_string();
+            let decimals = row.decimals.unwrap_or(2).clamp(0, i64::from(i16::MAX)) as i16;
+            Some(CurrencyUpsert {
+                legacy_id: row.id,
+                code,
+                name,
+                minor_unit: decimals,
+            })
+        });
+        if sanitized.is_empty() {
+            return Ok(0);
+        }
+        self.flush_currency_batch(&sanitized, has_minor_unit)
+            .await?;
+        for _ in 0..sanitized.len() {
+            prog.tick(1);
+        }
+        Ok(sanitized.len())
+    }
+
+    async fn flush_currency_batch(
+        &mut self,
+        batch: &[CurrencyUpsert],
+        has_minor_unit: bool,
+    ) -> Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        let codes: Vec<String> = batch.iter().map(|r| r.code.clone()).collect();
+        let names: Vec<String> = batch.iter().map(|r| r.name.clone()).collect();
+        if has_minor_unit {
+            let minors: Vec<i16> = batch.iter().map(|r| r.minor_unit).collect();
+            let rows = sqlx::query(
+                r#"
+                WITH input AS (
+                    SELECT UNNEST($1::text[]) AS code,
+                           UNNEST($2::text[]) AS name,
+                           UNNEST($3::int2[])  AS minor_unit
+                )
+                INSERT INTO public.currencies (code, name, minor_unit)
+                SELECT code, name, minor_unit FROM input
+                ON CONFLICT (code) DO UPDATE
+                SET name = EXCLUDED.name,
+                    minor_unit = EXCLUDED.minor_unit
+                RETURNING id, code
+                "#,
+            )
+            .persistent(false)
+            .bind(&codes)
+            .bind(&names)
+            .bind(&minors)
+            .fetch_all(&self.db.pool)
+            .await?;
+            let mut map = HashMap::new();
+            for row in rows {
+                let id: i64 = row.get("id");
+                let code: String = row.get("code");
+                map.insert(code.to_ascii_uppercase(), id);
+            }
+            for entry in batch {
+                if let Some(id) = map.get(&entry.code) {
+                    self.currency_map.insert(entry.legacy_id, *id);
+                }
+            }
+        } else {
+            let rows = sqlx::query(
+                r#"
+                WITH input AS (
+                    SELECT UNNEST($1::text[]) AS code,
+                           UNNEST($2::text[]) AS name
+                )
+                INSERT INTO public.currencies (code, name)
+                SELECT code, name FROM input
+                ON CONFLICT (code) DO UPDATE
+                SET name = EXCLUDED.name
+                RETURNING id, code
+                "#,
+            )
+            .persistent(false)
+            .bind(&codes)
+            .bind(&names)
+            .fetch_all(&self.db.pool)
+            .await?;
+            let mut map = HashMap::new();
+            for row in rows {
+                let id: i64 = row.get("id");
+                let code: String = row.get("code");
+                map.insert(code.to_ascii_uppercase(), id);
+            }
+            for entry in batch {
+                if let Some(id) = map.get(&entry.code) {
+                    self.currency_map.insert(entry.legacy_id, *id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn process_country_chunk(
+        &mut self,
+        rows: Vec<LegacyCountry>,
+        iso2_to_iso3: &HashMap<String, String>,
+        prog: &mut Progress,
+    ) -> Result<usize> {
+        if rows.is_empty() {
+            return Ok(0);
+        }
+        let currency_map = &self.currency_map;
+        let sanitized = self.parallel_filter_map(rows, |row| {
+            let iso2 = row.code.trim().to_ascii_uppercase();
+            if iso2.len() != 2 {
+                warn!(legacy_id=?row.id, iso=?row.code, "skipping country non-iso2");
+                return None;
+            }
+            let Some(iso3) = iso2_to_iso3.get(&iso2).cloned() else {
+                warn!(legacy_id=?row.id, ?iso2, "no iso3 mapping; skipping");
+                return None;
+            };
+            let Some(currency_id) = row
+                .currency_id
+                .and_then(|legacy| currency_map.get(&legacy).copied())
+            else {
+                warn!(legacy_id=?row.id, "skipping country missing currency mapping");
+                return None;
+            };
+            let name = row.name.trim();
+            if name.is_empty() {
+                warn!(legacy_id=?row.id, "skipping country with empty name");
+                return None;
+            }
+            Some(CountryUpsert {
+                legacy_id: row.id,
+                iso2,
+                iso3,
+                name: name.to_string(),
+                currency_id,
+            })
+        });
+        if sanitized.is_empty() {
+            return Ok(0);
+        }
+        self.flush_country_batch(&sanitized).await?;
+        for _ in 0..sanitized.len() {
+            prog.tick(1);
+        }
+        Ok(sanitized.len())
+    }
+
+    async fn flush_country_batch(&mut self, batch: &[CountryUpsert]) -> Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        let iso2_vec: Vec<String> = batch.iter().map(|r| r.iso2.clone()).collect();
+        let iso3_vec: Vec<String> = batch.iter().map(|r| r.iso3.clone()).collect();
+        let names: Vec<String> = batch.iter().map(|r| r.name.clone()).collect();
+        let currency_ids: Vec<i64> = batch.iter().map(|r| r.currency_id).collect();
+        let rows = sqlx::query(
+            r#"
+            WITH input AS (
+                SELECT UNNEST($1::text[]) AS iso2,
+                       UNNEST($2::text[]) AS iso3,
+                       UNNEST($3::text[]) AS name,
+                       UNNEST($4::bigint[]) AS currency_id
+            )
+            INSERT INTO public.countries (iso2, iso3, name, currency_id)
+            SELECT iso2, iso3, name, currency_id FROM input
+            ON CONFLICT (iso2) DO UPDATE
+            SET iso3 = EXCLUDED.iso3,
+                name = EXCLUDED.name,
+                currency_id = EXCLUDED.currency_id
+            RETURNING id, iso2
+            "#,
+        )
+        .persistent(false)
+        .bind(&iso2_vec)
+        .bind(&iso3_vec)
+        .bind(&names)
+        .bind(&currency_ids)
+        .fetch_all(&self.db.pool)
+        .await?;
+        let mut iso_map = HashMap::new();
+        for row in rows {
+            let id: i64 = row.get("id");
+            let iso2: String = row.get("iso2");
+            iso_map.insert(iso2.to_ascii_uppercase(), id);
+        }
+        for entry in batch {
+            if let Some(id) = iso_map.get(&entry.iso2) {
+                self.country_map.insert(entry.legacy_id, *id);
+            }
+        }
+        Ok(())
+    }
+
     async fn new(db: Db, sqlite: SqlitePool) -> Result<Self> {
         let cache = ProviderEntityCache::new(db.clone());
+        let rayon_pool = build_rayon_pool()?;
         // Toggle: allow skipping title normalization updates
         let skip_titles = {
             let a = std::env::var("SKIP_TITLES_FORCE")
@@ -390,6 +804,8 @@ impl ImportContext {
             db,
             sqlite,
             cache,
+            rayon_pool,
+            stage_timings: Vec::new(),
             skip_titles,
             media_only,
             stats: ImportStats::default(),
@@ -405,7 +821,6 @@ impl ImportContext {
             video_game_slugs: HashSet::new(),
             vg_slug_by_id: HashMap::new(),
             title_by_product: HashMap::new(),
-            sellable_by_title: HashMap::new(),
             vg_combo_map: HashMap::new(),
             vg_platform_by_vg: HashMap::new(),
             vg_platform_slug: HashMap::new(),
@@ -426,44 +841,53 @@ impl ImportContext {
     }
 
     async fn run(&mut self) -> Result<()> {
-        let media_staging_enabled = std::env::var("MEDIA_STAGING")
-            .ok()
-            .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-            .unwrap_or(false);
+
         if self.media_only {
             info!(
                 "MEDIA_ONLY enabled — skipping non-media stages (lookups, products, video_games)"
             );
         } else {
             // Providers (from legacy sources) first so media can resolve provider slugs
-            let _ = self.import_video_game_sources().await;
+            let _ = self
+                .profile_stage("video_game_sources", |ctx| {
+                    Box::pin(ctx.import_video_game_sources())
+                })
+                .await;
 
             // Lookups
-            self.import_currencies().await?;
+            self.profile_stage("currencies", |ctx| Box::pin(ctx.import_currencies()))
+                .await?;
             self.mark_stage_done("currencies").await?;
-            self.import_platforms().await?;
+            self.profile_stage("platforms", |ctx| Box::pin(ctx.import_platforms()))
+                .await?;
             self.mark_stage_done("platforms").await?;
-            self.import_countries().await?;
+            self.profile_stage("countries", |ctx| Box::pin(ctx.import_countries()))
+                .await?;
             self.mark_stage_done("countries").await?;
 
             // Relationships needed for VG derivation
-            self.load_product_platform_links().await?;
+            self.profile_stage("product_platform_links", |ctx| {
+                Box::pin(ctx.load_product_platform_links())
+            })
+            .await?;
 
             // Core entities
-            self.import_products().await?;
+            self.profile_stage("products", |ctx| Box::pin(ctx.import_products()))
+                .await?;
             self.mark_stage_done("products").await?;
-            self.import_video_games().await?;
+            self.profile_stage("video_games", |ctx| Box::pin(ctx.import_video_games()))
+                .await?;
             self.mark_stage_done("video_games").await?;
         }
 
         // Legacy media tables → game_media
-        let _ = self.import_game_images().await.map(|_| ());
-        let _ = self.import_game_videos().await.map(|_| ());
-        if media_staging_enabled {
-            let _ = self.process_staged_video_media().await.map(|_| ());
-        } else {
-            info!("MEDIA_STAGING disabled — skipping legacy_video_media_raw drain");
-        }
+        let _ = self
+            .profile_stage("game_images", |ctx| Box::pin(ctx.import_game_images()))
+            .await;
+        let _ = self
+            .profile_stage("game_videos", |ctx| Box::pin(ctx.import_game_videos()))
+            .await;
+
 
         // Giant Bomb media specialized path (optional)
         // Run images in chunked loops until the stage marks done. This avoids having to
@@ -473,557 +897,46 @@ impl ImportContext {
             if self.is_stage_done("gb_images").await.unwrap_or(false) {
                 break;
             }
-            let _ = self.import_giantbomb_images().await.map(|_| ());
+            let _ = self
+                .profile_stage("gb_images_chunk", |ctx| {
+                    Box::pin(ctx.import_giantbomb_images())
+                })
+                .await;
             // Small yield between chunks to be polite to SQLite on slower disks
             // and to give Postgres a moment to flush indexes.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        let _ = self.import_giantbomb_videos().await.map(|_| ());
+        let _ = self
+            .profile_stage("gb_videos", |ctx| Box::pin(ctx.import_giantbomb_videos()))
+            .await;
 
         // Global dedupe for safety
-        let _ = self.dedupe_all().await.map(|_| ());
+        let _ = self
+            .profile_stage("dedupe_all", |ctx| Box::pin(ctx.dedupe_all()))
+            .await;
         Ok(())
     }
 }
 
 // Methods on ImportContext
 impl ImportContext {
-    async fn process_staged_video_media(&mut self) -> Result<()> {
-        if !self
-            .pg_table_exists("public.legacy_video_media_raw")
-            .await?
-        {
-            info!("legacy_video_media_raw table missing — skipping staged video processing");
-            return Ok(());
-        }
-        // Same fallback invocation for video media path (in case only videos staged or image path skipped)
-        let need_fallback = self.legacy_vg_map.is_empty() || self.product_map.is_empty();
-        let enable_fallback = std::env::var("MEDIA_FALLBACK_MAPPING")
-            .ok()
-            .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-            .unwrap_or(need_fallback);
-        if need_fallback && enable_fallback {
-            if let Err(e) = self.rebuild_fallback_media_mappings().await {
-                warn!(error=?e, "fallback media mapping rebuild failed (video); proceeding without it");
-            } else {
-                info!(
-                    "fallback media mappings rebuilt (video path) product_map={}, legacy_vg_map={}",
-                    self.product_map.len(),
-                    self.legacy_vg_map.len()
-                );
-            }
-        }
-        let limit: i64 = std::env::var("MEDIA_STAGE_PROCESS_LIMIT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(5000);
-        let rows = sqlx
-            ::query(
-                "SELECT id, legacy_id, legacy_product_id, legacy_video_game_id, provider_slug, kind, url, title, mime_type, duration_seconds, external_id, legacy_metadata FROM public.legacy_video_media_raw WHERE processed=false ORDER BY id LIMIT $1"
-            )
-            .bind(limit)
-            .persistent(false)
-            .fetch_all(&self.db.pool).await?;
-        if rows.is_empty() {
-            info!("no staged video media to process");
-            return Ok(());
-        }
-        // --- New optimized path: batch ensure provider_items first to avoid per-row round trips ---
-        #[derive(Debug)]
-        struct StagedVidRow {
-            provider_slug: String,
-            provider_item_external: String, // external key used for provider_items
-            external_id: String,            // media external id
-            url: String,
-            media_type: String,
-            provider_data: Value,
-            video_game_ids: Vec<i64>,
-        }
-        let mut staged: Vec<StagedVidRow> = Vec::new();
-        let mut provider_item_pairs: Vec<(i64, String)> = Vec::new(); // (provider_id, external_item_id)
-        let mut row_ids: Vec<i64> = Vec::with_capacity(rows.len());
-        for r in rows.iter() {
-            let rid: i64 = r.try_get("id")?;
-            row_ids.push(rid);
-            let url: String = r.try_get("url")?;
-            if url.trim().is_empty() {
-                continue;
-            }
-            let kind: String = r
-                .try_get::<String, _>("kind")
-                .unwrap_or_else(|_| "trailer".into());
-            let provider_slug: Option<String> = r
-                .try_get::<Option<String>, _>("provider_slug")
-                .ok()
-                .flatten();
-            let provider_slug = provider_slug.unwrap_or_else(|| "manual".into());
-            let provider_id = self.provider_id_for_slug(&provider_slug).await?;
-            let ext_id: Option<String> = r.try_get("external_id").ok();
-            let external_id = ext_id
-                .filter(|e| !e.trim().is_empty())
-                .unwrap_or_else(|| url.clone());
-            let mut target_vgs: Vec<i64> = Vec::new();
-            if let Ok(legacy_vg) = r.try_get::<i64, _>("legacy_video_game_id") {
-                if legacy_vg > 0 {
-                    if let Some(pg_vg) = self.legacy_vg_map.get(&legacy_vg) {
-                        target_vgs.push(*pg_vg);
-                    }
-                }
-            }
-            if target_vgs.is_empty() {
-                if let Ok(legacy_pid) = r.try_get::<i64, _>("legacy_product_id") {
-                    if legacy_pid > 0 {
-                        if let Some(info) = self.product_map.get(&legacy_pid) {
-                            if let Some(title_id) = info.title_id {
-                                if let Some(platforms) = self.product_platforms.get(&legacy_pid) {
-                                    for pid in platforms {
-                                        let vg_id = self
-                                            .cache
-                                            .ensure_video_game(title_id, *pid, None)
-                                            .await?;
-                                        target_vgs.push(vg_id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if target_vgs.is_empty() {
-                continue;
-            }
-            let mut meta_map = serde_json::Map::new();
-            meta_map.insert("kind".into(), Value::String(kind.clone()));
-            meta_map.insert("provider_slug".into(), Value::String(provider_slug.clone()));
-            meta_map.insert("url".into(), Value::String(url.clone()));
-            if let Ok(title) = r.try_get::<Option<String>, _>("title") {
-                if let Some(t) = title {
-                    meta_map.insert("title".into(), Value::String(t));
-                }
-            }
-            if let Ok(mime) = r.try_get::<Option<String>, _>("mime_type") {
-                if let Some(m) = mime {
-                    meta_map.insert("mime_type".into(), Value::String(m));
-                }
-            }
-            if let Ok(dur) = r.try_get::<Option<i32>, _>("duration_seconds") {
-                if let Some(ds) = dur {
-                    meta_map.insert("duration_seconds".into(), Value::Number(ds.into()));
-                }
-            }
-            if let Ok(legacy_meta) = r.try_get::<Option<Value>, _>("legacy_metadata") {
-                if let Some(lm) = legacy_meta {
-                    meta_map.insert("legacy_metadata".into(), lm);
-                }
-            }
-            let provider_data = Value::Object(meta_map);
-            let pi_external = format!("media:{}", external_id);
-            provider_item_pairs.push((provider_id, pi_external.clone()));
-            let media_type = (if kind.eq_ignore_ascii_case("gameplay") {
-                "gameplay"
-            } else {
-                "trailer"
-            })
-            .to_string();
-            staged.push(StagedVidRow {
-                provider_slug,
-                provider_item_external: pi_external,
-                external_id,
-                url,
-                media_type,
-                provider_data,
-                video_game_ids: target_vgs,
-            });
-        }
-        if staged.is_empty() {
-            info!("no eligible staged video media rows after filtering");
-            return Ok(());
-        }
-        // Deduplicate provider_item pairs.
-        use std::collections::HashMap as StdHashMap;
-        let mut uniq_pairs: StdHashMap<(i64, String), ()> = StdHashMap::new();
-        for (pid, ext) in provider_item_pairs.into_iter() {
-            uniq_pairs.entry((pid, ext)).or_insert(());
-        }
-        let (pid_vec, ext_vec): (Vec<i64>, Vec<String>) = uniq_pairs.keys().cloned().unzip();
-        // Batch ensure provider_items
-        let ensured_rows = sqlx::query(
-            r#"WITH inp AS (
-                SELECT UNNEST($1::bigint[]) AS provider_id,
-                       UNNEST($2::text[])   AS external_item_id
-            )
-            INSERT INTO public.provider_items (provider_id, external_item_id)
-            SELECT provider_id, external_item_id FROM inp
-            ON CONFLICT (provider_id, external_item_id)
-            DO UPDATE SET updated_at = now()
-            RETURNING provider_id, external_item_id, id"#,
-        )
-        .bind(&pid_vec)
-        .bind(&ext_vec)
-        .persistent(false)
-        .fetch_all(&self.db.pool)
-        .await?;
-        let mut provider_item_map: StdHashMap<(i64, String), i64> = StdHashMap::new();
-        for r in ensured_rows {
-            let pid: i64 = r.try_get("provider_id")?;
-            let ext: String = r.try_get("external_item_id")?;
-            let id: i64 = r.try_get("id")?;
-            provider_item_map.insert((pid, ext), id);
-        }
-        // Build media batch and link groups using resolved provider_item ids.
-        let mut media_batch: Vec<(i64, String, String, String, String, Value)> = Vec::new();
-        let mut link_groups: StdHashMap<
-            (i64, i64, String),
-            Vec<(String, Option<String>, Option<String>, Option<String>)>,
-        > = StdHashMap::new();
-        for sv in staged.into_iter() {
-            let provider_id = self.provider_id_for_slug(&sv.provider_slug).await?; // cached
-            let key = (provider_id, sv.provider_item_external.clone());
-            let provider_item_id = *provider_item_map
-                .get(&key)
-                .expect("provider_item_id missing after batch ensure");
-            for vg_id in sv.video_game_ids.iter().copied() {
-                media_batch.push((
-                    vg_id,
-                    sv.provider_slug.clone(),
-                    sv.external_id.clone(),
-                    sv.media_type.clone(),
-                    sv.url.clone(),
-                    sv.provider_data.clone(),
-                ));
-                link_groups
-                    .entry((provider_item_id, vg_id, sv.provider_slug.clone()))
-                    .or_default()
-                    .push((sv.url.clone(), Some(sv.media_type.clone()), None, None));
-            }
-        }
-        if !media_batch.is_empty() {
-            let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = media_batch
-                .iter()
-                .map(|(a, b, c, d, e, f)| (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f))
-                .collect();
-            let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-            for ((provider_item_id, vg_id, src), urls) in link_groups.into_iter() {
-                let _ = ensure_provider_media_links_with_meta(
-                    self.cache.db(),
-                    provider_item_id,
-                    Some(vg_id),
-                    &urls,
-                    &src,
-                    None,
-                )
-                .await?;
-            }
-            sqlx::query(
-                "UPDATE public.legacy_video_media_raw SET processed=true WHERE id = ANY($1)",
-            )
-            .bind(&row_ids)
-            .persistent(false)
-            .execute(&self.db.pool)
-            .await
-            .ok();
-        }
-        info!(
-            processed_rows = media_batch.len(),
-            "staged video media processed (batch provider_item ensures)"
-        );
-        Ok(())
-    }
 
-    // ---------------------------------------------------------------------
-    // Fallback mapping reconstruction for media staging
-    // ---------------------------------------------------------------------
-    // Build minimal product_map (legacy_product_id -> ProductInfo) and legacy_vg_map
-    // (legacy_video_game_id -> pg video_games.id) for the set of legacy IDs referenced in
-    // unprocessed staging rows. This allows media processing to succeed when earlier
-    // import stages (products/video_games) were skipped due to sentinels or FORCE flags.
-    async fn rebuild_fallback_media_mappings(&mut self) -> Result<()> {
-        use sqlx::Row;
-        let img_exists = self
-            .pg_table_exists("public.legacy_image_media_raw")
-            .await?;
-        let vid_exists = self
-            .pg_table_exists("public.legacy_video_media_raw")
-            .await?;
-        if !img_exists && !vid_exists {
-            info!("legacy media staging tables missing — skipping fallback mapping rebuild");
-            return Ok(());
-        }
-        // Collect distinct legacy product ids from staging tables.
-        // Optimized: perform two simple indexed scans (after adding partial indexes) and
-        // deduplicate in-memory instead of forcing PostgreSQL to hash/merge DISTINCT + UNION.
-        // This substantially reduces planning/execution time for large staging sets.
-        use std::collections::HashSet as StdHashSet;
-        let mut legacy_product_ids: StdHashSet<i64> = StdHashSet::new();
-        // Image staging rows
-        let img_prod_rows = sqlx
-            ::query_scalar::<_, i64>(
-                "SELECT legacy_product_id FROM public.legacy_image_media_raw WHERE processed=false AND legacy_product_id > 0"
-            )
-            .persistent(false)
-            .fetch_all(&self.db.pool).await?;
-        for pid in img_prod_rows {
-            legacy_product_ids.insert(pid);
-        }
-        // Video staging rows
-        let vid_prod_rows = sqlx
-            ::query_scalar::<_, i64>(
-                "SELECT legacy_product_id FROM public.legacy_video_media_raw WHERE processed=false AND legacy_product_id > 0"
-            )
-            .persistent(false)
-            .fetch_all(&self.db.pool).await?;
-        for pid in vid_prod_rows {
-            legacy_product_ids.insert(pid);
-        }
-        // Only pull SQLite product rows we do not already have mappings for.
-        for legacy_pid in legacy_product_ids.into_iter() {
-            if self.product_map.contains_key(&legacy_pid) {
-                continue;
-            }
-            // Lookup legacy product in SQLite
-            let lp_opt = sqlx
-                ::query(
-                    "SELECT id, name, slug, category, release_date, synopsis, metadata, CAST(popularity_score AS REAL) AS popularity_score, CAST(rating AS REAL) AS rating FROM products WHERE id = ?"
-                )
-                .persistent(false)
-                .bind(legacy_pid)
-                .fetch_optional(&self.sqlite).await?;
-            let Some(lp) = lp_opt else {
-                continue;
-            };
-            let name: String = lp.try_get::<String, _>("name").unwrap_or_default();
-            let slug: String = lp
-                .try_get::<String, _>("slug")
-                .unwrap_or_else(|_| simple_slug(&name));
-            // Attempt PG product resolution by slug first, then by case-insensitive name.
-            let pg_product_id_opt =
-                sqlx::query_scalar::<_, i64>("SELECT id FROM public.products WHERE slug = $1")
-                    .persistent(false)
-                    .bind(&slug)
-                    .fetch_optional(&self.db.pool)
-                    .await?;
-            let pg_product_id = if let Some(pid) = pg_product_id_opt {
-                pid
-            } else {
-                sqlx::query_scalar::<_, i64>(
-                    "SELECT id FROM public.products WHERE lower(name) = lower($1) LIMIT 1",
-                )
-                .persistent(false)
-                .bind(&name)
-                .fetch_optional(&self.db.pool)
-                .await?
-                .unwrap_or_else(|| {
-                    // Could not resolve; skip mapping for this legacy product (media rows may still fallback via provider-only inserts)
-                    0
-                })
-            };
-            if pg_product_id == 0 {
-                continue;
-            }
-            // Title id (choose first matching title for product)
-            let title_id = sqlx
-                ::query_scalar::<_, i64>(
-                    "SELECT id FROM public.video_game_titles WHERE video_game_id = $1 ORDER BY id LIMIT 1"
-                )
-                .persistent(false)
-                .bind(pg_product_id)
-                .fetch_optional(&self.db.pool).await?;
-            // Platforms -> video_games
-            let platform_vgs = if let Some(tid) = title_id {
-                let vgs = sqlx::query_scalar::<_, i64>(
-                    "SELECT id FROM public.video_games WHERE title_id = $1",
-                )
-                .persistent(false)
-                .bind(tid)
-                .fetch_all(&self.db.pool)
-                .await?;
-                vgs
-            } else {
-                Vec::new()
-            };
-            if !platform_vgs.is_empty() {
-                self.product_platforms
-                    .insert(legacy_pid, platform_vgs.clone());
-            }
-            let popularity_score: f64 = lp.try_get::<f64, _>("popularity_score").unwrap_or(0.0);
-            let rating: f64 = lp.try_get::<f64, _>("rating").unwrap_or(0.0);
-            let metadata = lp
-                .try_get::<Option<String>, _>("metadata")
-                .ok()
-                .and_then(|opt| opt.and_then(|s| serde_json::from_str::<Value>(s.as_str()).ok()));
-            let release_date = lp
-                .try_get::<Option<String>, _>("release_date")
-                .ok()
-                .and_then(|opt| opt.and_then(|val| parse_date(val.as_str())));
-            let synopsis = lp.try_get::<Option<String>, _>("synopsis").ok().flatten();
-            self.product_map.insert(
-                legacy_pid,
-                ProductInfo {
-                    pg_id: pg_product_id,
-                    slug: slug.clone(),
-                    title: name.clone(),
-                    kind: normalize_product_kind(
-                        lp.try_get::<Option<String>, _>("category")
-                            .ok()
-                            .flatten()
-                            .as_deref(),
-                    )
-                    .to_string(),
-                    release_date,
-                    synopsis,
-                    popularity_score,
-                    rating,
-                    metadata,
-                    title_id,
-                    sellable_id: None,
-                },
-            );
-        }
-        // Legacy VG ids referenced in staging rows
-        // Video game legacy ids (same optimization pattern as products)
-        let mut legacy_vg_ids: StdHashSet<i64> = StdHashSet::new();
-        let img_vg_rows = sqlx
-            ::query_scalar::<_, i64>(
-                "SELECT legacy_video_game_id FROM public.legacy_image_media_raw WHERE processed=false AND legacy_video_game_id > 0"
-            )
-            .persistent(false)
-            .fetch_all(&self.db.pool).await?;
-        for id in img_vg_rows {
-            legacy_vg_ids.insert(id);
-        }
-        let vid_vg_rows = sqlx
-            ::query_scalar::<_, i64>(
-                "SELECT legacy_video_game_id FROM public.legacy_video_media_raw WHERE processed=false AND legacy_video_game_id > 0"
-            )
-            .persistent(false)
-            .fetch_all(&self.db.pool).await?;
-        for id in vid_vg_rows {
-            legacy_vg_ids.insert(id);
-        }
-        for legacy_vg_id in legacy_vg_ids.into_iter() {
-            if self.legacy_vg_map.contains_key(&legacy_vg_id) {
-                continue;
-            }
-            // Fetch legacy VG row from SQLite (title + normalized_title + product_id).
-            let vg_opt = sqlx
-                ::query(
-                    "SELECT id, product_id, title, normalized_title, slug FROM video_games WHERE id = ?"
-                )
-                .persistent(false)
-                .bind(legacy_vg_id)
-                .fetch_optional(&self.sqlite).await?;
-            let Some(vgrow) = vg_opt else {
-                continue;
-            };
-            // Determine normalized title for matching.
-            let norm = if let Ok(Some(nt)) = vgrow.try_get::<Option<String>, _>("normalized_title")
-            {
-                if nt.trim().is_empty() {
-                    None
-                } else {
-                    Some(nt.trim().to_string())
-                }
-            } else {
-                None
-            };
-            let title_txt = if let Ok(Some(t)) = vgrow.try_get::<Option<String>, _>("title") {
-                Some(t.trim().to_string())
-            } else {
-                None
-            };
-            let norm_val = norm.clone().unwrap_or_else(|| {
-                title_txt
-                    .clone()
-                    .map(|t| normalize_title(t.as_str()))
-                    .unwrap_or_default()
-            });
-            // Match PG video_game via normalized title.
-            let pg_vg_opt = sqlx
-                ::query_scalar::<_, i64>(
-                    "SELECT v.id FROM public.video_games v JOIN public.video_game_titles t ON t.id = v.title_id WHERE t.normalized_title = $1 ORDER BY v.id LIMIT 1"
-                )
-                .persistent(false)
-                .bind(&norm_val)
-                .fetch_optional(&self.db.pool).await?;
-            if let Some(pg_vg_id) = pg_vg_opt {
-                self.legacy_vg_map.insert(legacy_vg_id, pg_vg_id);
-                continue;
-            }
-            // Fallback: if we can resolve product mapping, pick first VG for that product.
-            if let Ok(prod_id_opt) = vgrow.try_get::<Option<i64>, _>("product_id") {
-                if let Some(legacy_pid) = prod_id_opt {
-                    if let Some(info) = self.product_map.get(&legacy_pid) {
-                        if let Some(tid) = info.title_id {
-                            let pg_vg_opt2 = sqlx
-                                ::query_scalar::<_, i64>(
-                                    "SELECT id FROM public.video_games WHERE title_id = $1 ORDER BY id LIMIT 1"
-                                )
-                                .persistent(false)
-                                .bind(tid)
-                                .fetch_optional(&self.db.pool).await?;
-                            if let Some(pg_vg_id2) = pg_vg_opt2 {
-                                self.legacy_vg_map.insert(legacy_vg_id, pg_vg_id2);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
+
+
+
 
     // ----- Deduplication stage (post-import) -----
-    // Consolidate duplicate titles/sellables created during import by picking a stable keeper ID
+    // Consolidate duplicate titles created during import by picking a stable keeper ID
     // and re-pointing dependents before deleting duplicates.
     async fn dedupe_products(&self) -> Result<()> {
         let pool = &self.db.pool;
         let mut tx = pool.begin().await?;
 
-        // A) Deduplicate video_game_titles by unified key while SAFELY merging sellables first to avoid
-        //    hitting the partial unique index uq_sellables_software_title. Strategy:
+        // A) Deduplicate video_game_titles by unified key
+        //    Strategy:
         //      1. Identify duplicate title groups (pid0,key)
-        //      2. For each group, collect all sellables referencing ANY title id in the group.
-        //         Pick a keeper sellable (MIN(id)); repoint offers to keeper; delete other sellables.
-        //      3. Re-point video_games to keeper title_id.
-        //      4. Update remaining sellables to keeper title_id.
-        //      5. Delete duplicate titles (non-keeper ids).
-        let merge_sellables_sql = r#"
-            WITH base AS (
-                SELECT id,
-                       COALESCE(product_id,0) AS pid0,
-                       COALESCE(NULLIF(normalized_title,''), lower(title)) AS key
-                FROM public.video_game_titles
-            ), groups AS (
-                SELECT pid0,
-                       key,
-                       MIN(id) AS keep_id,
-                       ARRAY_AGG(id ORDER BY id) AS all_ids
-                FROM base
-                WHERE key IS NOT NULL AND key <> ''
-                GROUP BY pid0, key
-                HAVING COUNT(*) > 1
-            ), sellable_groups AS (
-                SELECT g.keep_id,
-                       MIN(s.id) AS keep_sellable_id,
-                       ARRAY_AGG(s.id ORDER BY s.id) AS sellable_ids
-                FROM groups g
-                JOIN public.sellables s ON s.software_title_id = ANY(g.all_ids)
-                GROUP BY g.keep_id
-            ), moved_offers AS (
-                UPDATE public.offers o
-                SET sellable_id = sg.keep_sellable_id
-                FROM sellable_groups sg
-                WHERE o.sellable_id = ANY(sg.sellable_ids) AND o.sellable_id <> sg.keep_sellable_id
-                RETURNING 1
-            )
-            DELETE FROM public.sellables s
-            USING sellable_groups sg
-            WHERE s.id = ANY(sg.sellable_ids) AND s.id <> sg.keep_sellable_id;
-        "#;
-        let _res_merge_sellables = sqlx::query(merge_sellables_sql)
-            .persistent(false)
-            .execute(&mut *tx)
-            .await?;
+        //      2. Re-point video_games to keeper title_id.
+        //      3. Delete duplicate titles (non-keeper ids).
 
         // Re-point video_games to keeper title_id
         // Pre-merge potential duplicate video_games rows that would collide under the keep title_id
@@ -1103,33 +1016,6 @@ impl ImportContext {
             .execute(&mut *tx)
             .await?;
 
-        // Update remaining sellables to keeper title_id (after collapsing duplicates)
-        let update_sellables_sql = r#"
-            WITH base AS (
-                SELECT id,
-                       COALESCE(product_id,0) AS pid0,
-                       COALESCE(NULLIF(normalized_title,''), lower(title)) AS key
-                FROM public.video_game_titles
-            ), groups AS (
-                SELECT pid0,
-                       key,
-                       MIN(id) AS keep_id,
-                       ARRAY_AGG(id ORDER BY id) AS all_ids
-                FROM base
-                WHERE key IS NOT NULL AND key <> ''
-                GROUP BY pid0, key
-                HAVING COUNT(*) > 1
-            )
-            UPDATE public.sellables s
-            SET software_title_id = g.keep_id
-            FROM groups g
-            WHERE s.software_title_id = ANY(g.all_ids) AND s.software_title_id <> g.keep_id;
-        "#;
-        let _res_update_sellables = sqlx::query(update_sellables_sql)
-            .persistent(false)
-            .execute(&mut *tx)
-            .await?;
-
         // Finally delete duplicate titles
         let delete_titles_sql = r#"
             WITH base AS (
@@ -1157,37 +1043,9 @@ impl ImportContext {
             .await?;
         let deleted_titles = res_titles.rows_affected();
 
-        // B) Deduplicate sellables for software titles: ensure one sellable per title
-        let sellables_sql = r#"
-            WITH dup AS (
-                SELECT software_title_id,
-                       MIN(id) AS keep_id,
-                       ARRAY_AGG(id ORDER BY id) AS all_ids
-                FROM public.sellables
-                WHERE kind = 'software' AND software_title_id IS NOT NULL
-                GROUP BY software_title_id
-                HAVING COUNT(*) > 1
-            ), moved_offers AS (
-                UPDATE public.offers o
-                SET sellable_id = d.keep_id
-                FROM dup d
-                WHERE o.sellable_id = ANY(d.all_ids) AND o.sellable_id <> d.keep_id
-                RETURNING 1
-            )
-            DELETE FROM public.sellables s
-            USING dup d
-            WHERE s.software_title_id = d.software_title_id AND s.id <> d.keep_id;
-        "#;
-        let res_sellables = sqlx::query(sellables_sql)
-            .persistent(false)
-            .execute(&mut *tx)
-            .await?;
-        let deleted_sellables = res_sellables.rows_affected();
-
         tx.commit().await?;
         info!(
-            deleted_titles,
-            deleted_sellables, "deduplication complete (titles/sellables)"
+            deleted_titles, "deduplication complete (titles)"
         );
         Ok(())
     }
@@ -1267,18 +1125,18 @@ impl ImportContext {
             .await?;
         let deleted_media = res_media.rows_affected();
 
-        // 3. provider_media_links duplicates (same provider_item_id, video_game_id, source, url)
+        // 3. provider_media_links duplicates (same video_game_source_id, video_game_id, source, url)
         let links_sql = r#"
             WITH base AS (
-                SELECT id, provider_item_id, COALESCE(video_game_id,0) AS vg_id, source, COALESCE(url,'') AS url
+                SELECT id, video_game_source_id, COALESCE(video_game_id,0) AS vg_id, source, COALESCE(url,'') AS url
                 FROM public.provider_media_links
             ), groups AS (
-                SELECT provider_item_id, vg_id, source, url,
+                SELECT video_game_source_id, vg_id, source, url,
                        MIN(id) AS keep_id,
                        ARRAY_AGG(id ORDER BY id) AS all_ids
                 FROM base
                 WHERE url <> '' -- drop source <> '' to avoid enum comparison issues
-                GROUP BY provider_item_id, vg_id, source, url
+                GROUP BY video_game_source_id, vg_id, source, url
                 HAVING COUNT(*) > 1
             )
             DELETE FROM public.provider_media_links l
@@ -1449,27 +1307,6 @@ impl ImportContext {
         Ok(())
     }
 
-    async fn ensure_title_cached(&mut self, title: &str) -> Result<i64> {
-        let norm = normalize_title(title);
-        if let Some(id) = self.title_id_by_norm.get(&norm) {
-            return Ok(*id);
-        }
-        // NOTE: We allow creating NEW titles even when skip_titles=true so that
-        // subsequent video_game imports are not blocked. skip_titles now only
-        // freezes normalized_title update batches (see vgt_title_updates usage).
-        let rec = sqlx
-            ::query(
-                "INSERT INTO public.video_game_titles (title, normalized_title) VALUES ($1,$2) RETURNING id"
-            )
-            .persistent(false)
-            .bind(title)
-            .bind(&norm)
-            .fetch_one(&self.db.pool).await?;
-        let id: i64 = rec.get("id");
-        self.title_id_by_norm.insert(norm, id);
-        Ok(id)
-    }
-
     // Resolve provider id by slug with in-memory cache. Creates a 'media' kind provider if missing.
     async fn provider_id_for_slug(&mut self, slug: &str) -> Result<i64> {
         if let Some(id) = self.provider_id_by_slug.get(slug) {
@@ -1534,7 +1371,7 @@ impl ImportContext {
                 self.vg_slug_by_id.insert(id, slug);
             }
         }
-        // Prefill existing titles and sellables + video_game combos for batching ensures.
+        // Prefill existing titles + video_game combos for batching ensures.
         let titles = sqlx
             ::query(
                 "SELECT id, video_game_id FROM public.video_game_titles WHERE video_game_id IS NOT NULL"
@@ -1545,16 +1382,6 @@ impl ImportContext {
             let tid: i64 = r.get("id");
             let pid: i64 = r.get("video_game_id");
             self.title_by_product.insert(pid, tid);
-        }
-        let sellables =
-            sqlx::query("SELECT id, software_title_id FROM public.sellables WHERE kind='software'")
-                .persistent(false)
-                .fetch_all(&self.db.pool)
-                .await?;
-        for r in sellables {
-            let sid: i64 = r.get("id");
-            let tid: i64 = r.get("software_title_id");
-            self.sellable_by_title.insert(tid, sid);
         }
         let vg_rows = sqlx::query("SELECT id, title_id, platform_id FROM public.video_games")
             .persistent(false)
@@ -1568,6 +1395,19 @@ impl ImportContext {
             self.vg_platform_by_vg.insert(id, platform_id);
         }
         Ok(())
+    }
+
+    fn platform_label_for_product(&self, legacy_product_id: i64) -> String {
+        if let Some(platform_ids) = self.product_platforms.get(&legacy_product_id) {
+            if platform_ids.len() == 1 {
+                if let Some(code) = self.platform_slug_by_pg.get(&platform_ids[0]) {
+                    return code.clone();
+                }
+            } else if !platform_ids.is_empty() {
+                return "multi".to_string();
+            }
+        }
+        "unknown".to_string()
     }
 
     // ---------- Imports with progress ----------
@@ -1584,40 +1424,36 @@ impl ImportContext {
         let mut prog = Progress::new("currencies", total);
         info!("importing currencies");
 
+        let has_minor_unit = self.columns_for("currencies").await?.contains("minor_unit");
         let mut stream = sqlx::query_as::<_, LegacyCurrency>(
             r#"SELECT id, code, name, decimals FROM currencies ORDER BY id"#,
         )
         .persistent(false)
         .fetch(&self.sqlite);
-
+        let batch_size = lookup_batch_size();
+        let mut buffer: Vec<LegacyCurrency> = Vec::with_capacity(batch_size);
         let mut count = 0usize;
         while let Some(row) = stream.try_next().await? {
-            let code = row
-                .code
-                .as_deref()
-                .unwrap_or_default()
-                .trim()
-                .to_ascii_uppercase();
-            if code.len() < 3 {
-                warn!(legacy_id=?row.id, ?code, "skipping currency with short code");
-                prog.tick(1);
-                continue;
+            buffer.push(row);
+            if buffer.len() >= batch_size {
+                let processed = self
+                    .clone()
+                    .process_currency_chunk(std::mem::take(&mut buffer), has_minor_unit, &mut prog)
+                    .await?;
+                count += processed;
             }
-            let name = row
-                .name
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .unwrap_or(&code)
-                .to_string();
-            let decimals = row.decimals.unwrap_or(2);
-            let pg_id = ensure_currency(self.cache.db(), &code, &name, decimals as i16).await?;
-            self.currency_map.insert(row.id, pg_id);
-            count += 1;
-            prog.tick(1);
+        }
+        if !buffer.is_empty() {
+            count += self
+                .clone()
+                .process_currency_chunk(buffer, has_minor_unit, &mut prog)
+                .await?;
         }
         prog.finish();
-        info!("imported {count} currencies");
+        info!(
+            count,
+            batch_size, "imported currencies with batched upserts"
+        );
         Ok(())
     }
 
@@ -1721,67 +1557,33 @@ impl ImportContext {
 
         let iso2_to_iso3 = load_iso2_to_iso3(&self.db.pool).await?;
 
+        let sqlite_pool = self.sqlite.clone();
         let mut stream = sqlx::query_as::<_, LegacyCountry>(
             r#"SELECT id, code, name, currency_id FROM countries ORDER BY id"#,
         )
         .persistent(false)
-        .fetch(&self.sqlite);
+        .fetch(&sqlite_pool);
 
+        let batch_size = lookup_batch_size();
+        let mut buffer: Vec<LegacyCountry> = Vec::with_capacity(batch_size);
         let mut count = 0usize;
-
         while let Some(row) = stream.try_next().await? {
-            let iso2 = row.code.trim().to_ascii_uppercase();
-            if iso2.len() != 2 {
-                warn!(legacy_id=?row.id, iso=?row.code, "skipping country non-iso2");
-                prog.tick(1);
-                continue;
+            buffer.push(row);
+            if buffer.len() >= batch_size {
+                let processed = self
+                    .process_country_chunk(std::mem::take(&mut buffer), &iso2_to_iso3, &mut prog)
+                    .await?;
+                count += processed;
             }
-            let Some(iso3) = iso2_to_iso3.get(&iso2).cloned() else {
-                warn!(legacy_id=?row.id, ?iso2, "no iso3 mapping; skipping");
-                prog.tick(1);
-                continue;
-            };
-            let Some(currency_id) = row
-                .currency_id
-                .and_then(|legacy| self.currency_map.get(&legacy).copied())
-            else {
-                warn!(legacy_id=?row.id, "skipping country missing currency mapping");
-                prog.tick(1);
-                continue;
-            };
-            let name = row.name.trim();
-            if name.is_empty() {
-                warn!(legacy_id=?row.id, "skipping country with empty name");
-                prog.tick(1);
-                continue;
-            }
-
-            sqlx::query(
-                "INSERT INTO public.countries (iso2, iso3, name, currency_id)
-                 VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (iso2) DO UPDATE
-                 SET name = EXCLUDED.name, currency_id = EXCLUDED.currency_id",
-            )
-            .persistent(false)
-            .bind(&iso2)
-            .bind(&iso3)
-            .bind(name)
-            .bind(currency_id)
-            .execute(&self.db.pool)
-            .await?;
-            let pg_id: (i64,) = sqlx::query_as("SELECT id FROM public.countries WHERE iso2 = $1")
-                .persistent(false)
-                .bind(&iso2)
-                .fetch_one(&self.db.pool)
+        }
+        if !buffer.is_empty() {
+            count += self
+                .process_country_chunk(buffer, &iso2_to_iso3, &mut prog)
                 .await?;
-            self.country_map.insert(row.id, pg_id.0);
-
-            count += 1;
-            prog.tick(1);
         }
 
         prog.finish();
-        info!("imported {count} countries");
+        info!(count, batch_size, "imported countries with batched upserts");
         Ok(())
     }
 
@@ -1815,6 +1617,62 @@ impl ImportContext {
         Ok(())
     }
 
+    async fn bootstrap_product_from_video_game(
+        &mut self,
+        legacy_product_id: i64,
+        row: &LegacyVideoGame,
+        mut product: ProductInfo,
+    ) -> Result<ProductInfo> {
+        if product.pg_id > 0 {
+            return Ok(product);
+        }
+
+        let slug_hint = row
+            .slug
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                let trimmed = product.slug.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            });
+        let slug_base = resolve_product_slug_base(slug_hint, &product.title, legacy_product_id);
+        let slug = if let Some(existing) = self.product_slug_by_legacy.get(&legacy_product_id) {
+            existing.clone()
+        } else {
+            let next = if self.product_slugs.contains(&slug_base) {
+                unique_slug_into(&slug_base, &mut self.product_slugs)
+            } else {
+                self.product_slugs.insert(slug_base.clone());
+                slug_base.clone()
+            };
+            self.product_slug_by_legacy
+                .insert(legacy_product_id, next.clone());
+            next
+        };
+
+        let platform_label = self.platform_label_for_product(legacy_product_id);
+        let product_id = ensure_product_named_with_platform(
+            self.cache.db(),
+            &product.kind,
+            &slug,
+            &product.title,
+            platform_label.as_str(),
+        )
+        .await?;
+        ensure_software_row(self.cache.db(), product_id).await?;
+
+        self.product_slug_to_id.insert(slug.clone(), product_id);
+
+        product.pg_id = product_id;
+        product.slug = slug;
+        self.product_map.insert(legacy_product_id, product.clone());
+        Ok(product)
+    }
+
     async fn import_products(&mut self) -> Result<()> {
         if self.is_stage_done("products").await? {
             info!("stage products:done — skipping import");
@@ -1839,6 +1697,14 @@ impl ImportContext {
             .ok()
             .map(|n| n as usize);
         let mut prog = Progress::new("products", total);
+
+        // Ensure provider and source exist for lineage tracking
+        let provider_id = self.provider_id_for_slug("sqlite_import").await?;
+        let sqlite_source_id = ensure_video_game_source(
+            self.cache.db(),
+            "sqlite_import",
+            "SQLite Import",
+        ).await?;
 
         let mut stream = if min_id > 0 {
             sqlx::query_as::<_, LegacyProduct>(
@@ -1893,60 +1759,122 @@ impl ImportContext {
             self.product_slug_by_legacy.insert(row.id, slug.clone());
             self.product_slugs.insert(slug.clone());
 
-            // Do not create or mutate products here; only look up existing by slug.
-            let product_id: Option<i64> = self.product_slug_to_id.get(&slug).copied();
+            // Ensure a canonical product row exists (create on-demand when slug not already mapped).
+            let platform_label = self.platform_label_for_product(row.id);
+            let product_id_value = match self.product_slug_to_id.get(&slug).copied() {
+                Some(pid) => pid,
+                None => {
+                    let pid = ensure_product_named_with_platform(
+                        self.cache.db(),
+                        &kind,
+                        &slug,
+                        name,
+                        platform_label.as_str(),
+                    )
+                    .await?;
+                    self.product_slug_to_id.insert(slug.clone(), pid);
+                    pid
+                }
+            };
+            let product_id = Some(product_id_value);
 
             let mut title_id = None;
-            let mut sellable_id = None;
             if kind == "software" {
+                // 1. Ensure the provider item exists for lineage
+                let _vg_source_item_id = self.cache.ensure_provider_item(
+                    provider_id,
+                    &row.id.to_string(),
+                    Some(serde_json::json!({
+                        "legacy_id": row.id,
+                        "legacy_slug": row.slug,
+                        "legacy_name": name,
+                        "imported_at": chrono::Utc::now().to_rfc3339()
+                    })),
+                    false,
+                ).await?;
+
+                // 2. Ensure title exists and is linked to the source item
                 let tid: i64 = if let Some(pid) = product_id {
                     if let Some(tid) = self.title_by_product.get(&pid) {
-                        *tid
+                        // Even if we have the title cached, we must ensure the link exists
+                        // But ensure_video_game_title_for_source_item does both.
+                        // To be safe and ensure lineage, we call it.
+                        // It should be fast if already linked.
+                        let slug_hint = if slug.trim().is_empty() {
+                            None
+                        } else {
+                            Some(slug.as_str())
+                        };
+                        
+                        let tid = self.cache.ensure_video_game_title_for_source_item(
+                            sqlite_source_id,
+                            &row.id.to_string(),
+                            Some(pid),
+                            None,
+                            name,
+                            slug_hint,
+                            None,
+                            None,
+                        ).await?;
+                        
+                        *self.title_by_product.entry(pid).or_insert(tid)
                     } else {
-                        let rec = sqlx
-                            ::query(
-                                "INSERT INTO public.video_game_titles (product_id,title)
-                                 VALUES ($1,$2)
-                                 ON CONFLICT (product_id) DO UPDATE SET title=EXCLUDED.title, updated_at=now()
-                                 RETURNING id"
+                        let slug_hint = if slug.trim().is_empty() {
+                            None
+                        } else {
+                            Some(slug.as_str())
+                        };
+                        let tid = self
+                            .cache
+                            .ensure_video_game_title_for_source_item(
+                                sqlite_source_id,
+                                &row.id.to_string(),
+                                Some(pid),
+                                None,
+                                name,
+                                slug_hint,
+                                None,
+                                None,
                             )
-                            .persistent(false)
-                            .bind(pid)
-                            .bind(name)
-                            .fetch_one(&self.db.pool).await?;
-                        let tid: i64 = rec.get("id");
+                            .await?;
                         self.title_by_product.insert(pid, tid);
                         tid
                     }
                 } else {
-                    // No product available: ensure a title without video_game_id link (decoupled; cached locally)
+                    // No product available: create placeholder product to satisfy video_game_id NOT NULL constraint
+                    // (migration 0490 requires video_game_id to be NOT NULL and reference a product)
                     let norm = normalize_title(name);
                     if let Some(id) = title_cache.get(&norm).copied() {
                         id
                     } else {
-                        let rec = sqlx
-                            ::query(
-                                "INSERT INTO public.video_game_titles (title, normalized_title) VALUES ($1,$2) RETURNING id"
+                        // Create auto-generated product slug to ensure uniqueness
+                        let auto_slug = format!("auto-import-{}", Uuid::new_v4().simple());
+                        let pid = self
+                            .cache
+                            .ensure_product_named("software", &auto_slug, name)
+                            .await?;
+
+                        // Now create title with proper product linkage
+                        let tid = self
+                            .cache
+                            .ensure_video_game_title_for_source_item(
+                                sqlite_source_id,
+                                &row.id.to_string(),
+                                Some(pid),
+                                None,
+                                name,
+                                Some(&norm),
+                                None,
+                                None,
                             )
-                            .persistent(false)
-                            .bind(name)
-                            .bind(&norm)
-                            .fetch_one(&self.db.pool).await?;
-                        let id: i64 = rec.get("id");
-                        title_cache.insert(norm, id);
-                        id
+                            .await?;
+
+                        title_cache.insert(norm, tid);
+                        self.title_by_product.insert(pid, tid);
+                        tid
                     }
                 };
                 title_id = Some(tid);
-
-                let sid = if let Some(sid) = self.sellable_by_title.get(&tid) {
-                    *sid
-                } else {
-                    let sid = ensure_sellable_for_title(&self.db, tid).await?;
-                    self.sellable_by_title.insert(tid, sid);
-                    sid
-                };
-                sellable_id = Some(sid);
             }
 
             let release_date = row.release_date.as_deref().and_then(parse_date);
@@ -1958,7 +1886,7 @@ impl ImportContext {
             self.product_map.insert(
                 row.id,
                 ProductInfo {
-                    pg_id: product_id.unwrap_or(0),
+                    pg_id: product_id_value,
                     slug: slug.clone(),
                     title: name.to_string(),
                     kind: kind.clone(),
@@ -1973,12 +1901,14 @@ impl ImportContext {
                     rating: row.rating.unwrap_or(0.0),
                     metadata,
                     title_id,
-                    sellable_id,
                 },
             );
 
             processed += 1;
             prog.tick(1);
+            if processed == 1 || processed % 1000 == 0 {
+                self.cache.clear();
+            }
             if processed % checkpoint_every == 0 {
                 self.save_checkpoint("products", last_id).await?;
             }
@@ -2067,7 +1997,16 @@ impl ImportContext {
         };
         // Stream rows to avoid large memory spikes on big datasets
         let mut prog = Progress::new("video_games", total_filtered.map(|n| n as usize));
-        let pool = &self.db.pool;
+        let pool = &self.db.pool.clone();
+        
+        // Ensure provider exists for lineage
+        let provider_id = self.provider_id_for_slug("sqlite_import").await?;
+        let sqlite_source_id = ensure_video_game_source(
+            self.cache.db(),
+            "sqlite_import",
+            "SQLite Import",
+        ).await?;
+        
         let chunk = update_chunk_size();
         let mut updates: Vec<VgUpd> = Vec::with_capacity(chunk);
         let mut flushed_batches = 0usize;
@@ -2078,6 +2017,7 @@ impl ImportContext {
         let mut vgt_title_cache = self.title_id_by_norm.clone();
         let mut vg_flush_durations: Vec<std::time::Duration> = Vec::new();
         let mut skipped_existing = 0usize; // count of (title_id, platform_id) combinations already present
+        let sqlite_pool = self.sqlite.clone();
         let mut stream = if min_id > 0 {
             sqlx::query_as::<_, LegacyVideoGame>(
                 r#"
@@ -2091,7 +2031,7 @@ impl ImportContext {
             )
             .persistent(false)
             .bind(min_id)
-            .fetch(&self.sqlite)
+            .fetch(&sqlite_pool)
         } else {
             sqlx::query_as::<_, LegacyVideoGame>(
                 r#"
@@ -2103,7 +2043,7 @@ impl ImportContext {
             "#,
             )
             .persistent(false)
-            .fetch(&self.sqlite)
+            .fetch(&sqlite_pool)
         };
 
         // Checkpoint cadence
@@ -2123,7 +2063,7 @@ impl ImportContext {
             // Prefer mapped product metadata if present, but do NOT require it.
             // If the legacy product isn't mapped, synthesize a minimal product context from the SQLite row
             // so we can still build video_games purely from SQLite data.
-            let product = if let Some(p) = self.product_map.get(&row.product_id).cloned() {
+            let fallback_product = if let Some(p) = self.product_map.get(&row.product_id).cloned() {
                 p
             } else {
                 let fallback_title = row
@@ -2148,39 +2088,76 @@ impl ImportContext {
                     popularity_score: 0.0,
                     rating: 0.0,
                     metadata: fallback_meta,
-                    title_id: None, // derive below from SQLite title
-                    sellable_id: None,
+                    title_id: None,
                 }
             };
 
+            let mut product = self.clone()
+                .bootstrap_product_from_video_game(row.product_id, &row, fallback_product)
+                .await?;
+
             // Resolve/ensure a title_id even when product has no mapped title.
+            let title_string = row
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&product.title)
+                .to_string();
+            let slug_hint_owned = row
+                .slug
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    let trimmed = product.slug.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                });
             let title_id: i64 = if let Some(tid) = product.title_id {
                 tid
             } else {
-                // Prefer SQLite row.title; fallback to synthesized product.title
-                let to_title = row
-                    .title
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or(&product.title);
-                let norm = normalize_title(to_title);
-                if let Some(id) = vgt_title_cache.get(&norm).copied() {
-                    id
-                } else {
-                    let rec = sqlx
-                        ::query(
-                            "INSERT INTO public.video_game_titles (title, normalized_title) VALUES ($1,$2) RETURNING id"
-                        )
-                        .persistent(false)
-                        .bind(to_title)
-                        .bind(&norm)
-                        .fetch_one(&self.db.pool).await?;
-                    let id: i64 = rec.get("id");
-                    vgt_title_cache.insert(norm, id);
-                    id
-                }
+                // Ensure provider item for this video game row
+                let _vg_source_item_id = self.cache.ensure_provider_item(
+                    provider_id,
+                    &row.id.to_string(),
+                    Some(serde_json::json!({
+                        "legacy_video_game_id": row.id,
+                        "legacy_product_id": row.product_id,
+                        "imported_at": chrono::Utc::now().to_rfc3339()
+                    })),
+                    false,
+                ).await?;
+
+                let pid_opt = if product.pg_id > 0 { Some(product.pg_id) } else { None };
+
+                let tid = self
+                    .cache
+                    .ensure_video_game_title_for_source_item(
+                        sqlite_source_id,
+                        &row.id.to_string(),
+                        pid_opt,
+                        None,
+                        &title_string,
+                        slug_hint_owned.as_deref(),
+                        None,
+                        None,
+                    )
+                    .await?;
+                let norm_key = normalize_title(&title_string);
+                vgt_title_cache.insert(norm_key.clone(), tid);
+                self.title_id_by_norm.insert(norm_key, tid);
+                self.title_by_product.insert(product.pg_id, tid);
+                product.title_id = Some(tid);
+                product.title = title_string.clone();
+                tid
             };
+
+            self.product_map.insert(row.product_id, product.clone());
 
             if !self.skip_titles {
                 if let Some(norm) = row
@@ -2351,7 +2328,7 @@ impl ImportContext {
                     // Insert row; attempt batched insert for single key by multi-row builder (extendable later)
                     let rows = sqlx
                         ::query(
-                            "INSERT INTO public.video_games (title_id, platform_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING id"
+                            "INSERT INTO public.video_games (title_id, platform_id) VALUES ($1,$2) ON CONFLICT (title_id, platform_id) WHERE edition IS NULL DO NOTHING RETURNING id"
                         )
                         .bind(title_id)
                         .bind(platform_id)
@@ -2639,10 +2616,6 @@ impl ImportContext {
             return Ok(());
         }
         info!("importing legacy game_images → game_media (image)");
-        let staging = std::env::var("MEDIA_STAGING")
-            .ok()
-            .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-            .unwrap_or(false);
         let cols = self.sqlite_columns("game_images").await?;
         // Build SELECT with only present columns to avoid SQLite errors
         let mut select_cols: Vec<&str> = Vec::new();
@@ -2687,93 +2660,10 @@ impl ImportContext {
         );
         let mut stream = sqlx::query(&sql).persistent(false).fetch(&self.sqlite);
 
-        const BATCH: usize = 500;
-        // Staging batch for legacy_image_media_raw inserts
-        const STAGE_BATCH: usize = 1000;
         const LINKS_BATCH: usize = 1000; // number of links buffered before flushing grouped inserts
-        let mut batch: Vec<(i64, String, String, String, String, Value)> =
-            Vec::with_capacity(BATCH);
         let mut total_rows = 0usize;
-        // Buffer rows when MEDIA_STAGING=1 to avoid per-row INSERT cost
-        #[derive(Clone)]
-        struct LegacyImageRawRow {
-            legacy_id: i64,
-            legacy_product_id: i64,
-            legacy_video_game_id: i64,
-            provider_slug: Option<String>,
-            kind: String,
-            url: String,
-            title: Option<String>,
-            mime_type: Option<String>,
-            width: Option<i32>,
-            height: Option<i32>,
-            is_primary: Option<bool>,
-            attribution: Option<String>,
-            external_id: Option<String>,
-            legacy_metadata: Value,
-        }
-
-        async fn insert_legacy_image_media_raw_batch(
-            db: &Db,
-            rows: &[LegacyImageRawRow],
-        ) -> Result<u64> {
-            use sqlx::types::Json;
-            if rows.is_empty() {
-                return Ok(0);
-            }
-            let legacy_id: Vec<i64> = rows.iter().map(|r| r.legacy_id).collect();
-            let legacy_product_id: Vec<i64> = rows.iter().map(|r| r.legacy_product_id).collect();
-            let legacy_video_game_id: Vec<i64> =
-                rows.iter().map(|r| r.legacy_video_game_id).collect();
-            let provider_slug: Vec<Option<String>> =
-                rows.iter().map(|r| r.provider_slug.clone()).collect();
-            let kind: Vec<String> = rows.iter().map(|r| r.kind.clone()).collect();
-            let url: Vec<String> = rows.iter().map(|r| r.url.clone()).collect();
-            let title: Vec<Option<String>> = rows.iter().map(|r| r.title.clone()).collect();
-            let mime_type: Vec<Option<String>> = rows.iter().map(|r| r.mime_type.clone()).collect();
-            let width: Vec<Option<i32>> = rows.iter().map(|r| r.width).collect();
-            let height: Vec<Option<i32>> = rows.iter().map(|r| r.height).collect();
-            let is_primary: Vec<Option<bool>> = rows.iter().map(|r| r.is_primary).collect();
-            let attribution: Vec<Option<String>> =
-                rows.iter().map(|r| r.attribution.clone()).collect();
-            let external_id: Vec<Option<String>> =
-                rows.iter().map(|r| r.external_id.clone()).collect();
-            let legacy_metadata: Vec<Json<Value>> = rows
-                .iter()
-                .map(|r| Json(r.legacy_metadata.clone()))
-                .collect();
-
-            let res = sqlx
-                ::query(
-                    "INSERT INTO public.legacy_image_media_raw \
-                 (legacy_id, legacy_product_id, legacy_video_game_id, provider_slug, kind, url, title, mime_type, width, height, is_primary, attribution, external_id, legacy_metadata) \
-                 SELECT * FROM UNNEST( \
-                   $1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[], \
-                   $7::text[], $8::text[], $9::int4[], $10::int4[], $11::bool[], $12::text[], \
-                   $13::text[], $14::jsonb[]) \
-                 ON CONFLICT DO NOTHING"
-                )
-                .persistent(false)
-                .bind(legacy_id)
-                .bind(legacy_product_id)
-                .bind(legacy_video_game_id)
-                .bind(provider_slug)
-                .bind(kind)
-                .bind(url)
-                .bind(title)
-                .bind(mime_type)
-                .bind(width)
-                .bind(height)
-                .bind(is_primary)
-                .bind(attribution)
-                .bind(external_id)
-                .bind(legacy_metadata)
-                .execute(&db.pool).await?;
-            Ok(res.rows_affected())
-        }
-        let mut stage_buf: Vec<LegacyImageRawRow> = Vec::with_capacity(STAGE_BATCH);
         let mut vg_map_cache: HashMap<i64, Vec<i64>> = HashMap::new();
-        // Group provider_media_links inserts by (provider_item_id, vg_id, src) with a shared metadata blob
+        // Group provider_media_links inserts by (video_game_source_id, vg_id, src) with a shared metadata blob
         #[derive(Default)]
         struct LinkGroup {
             urls: Vec<(String, Option<String>, Option<String>, Option<String>)>,
@@ -2785,10 +2675,10 @@ impl ImportContext {
             db: &Db,
             groups: &mut HashMap<(i64, i64, String), LinkGroup>,
         ) -> Result<()> {
-            for ((provider_item_id, vg_id, src), grp) in groups.drain() {
-                let _ = ensure_provider_media_links_with_meta(
+            for ((video_game_source_id, vg_id, src), grp) in groups.drain() {
+                let _ = ensure_vg_source_media_links_with_meta(
                     db,
-                    provider_item_id,
+                    video_game_source_id,
                     Some(vg_id),
                     &grp.urls,
                     &src,
@@ -2856,8 +2746,8 @@ impl ImportContext {
                     }
                 }
             }
-            if target_vgs.is_empty() && !staging {
-                // No way to link strictly (and not staging), skip row entirely
+            if target_vgs.is_empty() {
+                // No way to link strictly, skip row entirely
                 prog.tick(1);
                 continue;
             }
@@ -2868,15 +2758,23 @@ impl ImportContext {
             }
             let media_type = if cols.contains("kind") {
                 row.try_get::<String, _>("kind")
-                    .unwrap_or_else(|_| "screenshot".into())
+                    .unwrap_or_else(|_| "cover".into())
             } else {
-                "screenshot".into()
+                "cover".into()
             };
-            let mime_type: Option<String> = if cols.contains("mime_type") {
+            let guessed_mime = guess_video_mime(&url);
+            let mut mime_type: Option<String> = if cols.contains("mime_type") {
                 row.try_get("mime_type").ok()
             } else {
                 None
             };
+            if mime_type
+                .as_ref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true)
+            {
+                mime_type = Some(guessed_mime.to_string());
+            }
             let title: Option<String> = if cols.contains("title") {
                 row.try_get("title").ok()
             } else {
@@ -3000,41 +2898,7 @@ impl ImportContext {
                 pdata.insert("legacy_metadata".into(), m);
             }
             let provider_data = Value::Object(pdata);
-            if staging {
-                // Stage raw row (one per legacy row, do not expand across target_vgs here)
-                let provider_slug_stage = source.clone().and_then(|s| {
-                    let trimmed = s.trim();
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(trimmed.to_lowercase())
-                    }
-                });
-                stage_buf.push(LegacyImageRawRow {
-                    legacy_id: row.try_get::<i64, _>("id").unwrap_or(0),
-                    legacy_product_id: row.try_get::<i64, _>("product_id").unwrap_or(0),
-                    legacy_video_game_id: row.try_get::<i64, _>("video_game_id").unwrap_or(0),
-                    provider_slug: provider_slug_stage,
-                    kind: media_type.clone(),
-                    url: url.clone(),
-                    title: title.clone(),
-                    mime_type: mime_type.clone(),
-                    width: width.map(|w| w as i32),
-                    height: height.map(|h| h as i32),
-                    is_primary: is_primary.map(|p| p == 1),
-                    attribution: attribution.clone(),
-                    external_id: external_id.clone(),
-                    legacy_metadata: provider_data.clone(),
-                });
-                if stage_buf.len() >= STAGE_BATCH {
-                    let _ =
-                        insert_legacy_image_media_raw_batch(self.cache.db(), &stage_buf).await?;
-                    stage_buf.clear();
-                }
-                total_rows += 1;
-                prog.tick(1);
-                continue;
-            }
+
             // Resolve provider source slug: prefer column; optionally derive from URL if allowed
             let allow_url_source = std::env::var("IMPORTER_ALLOW_URL_SOURCE")
                 .ok()
@@ -3057,6 +2921,7 @@ impl ImportContext {
                     continue;
                 }
             };
+            let src = normalize_provider_slug(&src).to_string();
             let ext_id = external_id.unwrap_or_else(|| url.clone());
             // Resolve provider id via cached slug lookup (create if missing)
             let provider_id: i64 = self.provider_id_for_slug(&src).await?; // avoid &String clone
@@ -3065,21 +2930,13 @@ impl ImportContext {
             } else {
                 format!("media:{}", ext_id)
             };
-            let provider_item_id = self
+            let video_game_source_id = self
                 .cache
                 .ensure_provider_item(provider_id, &pi_external, None, false)
                 .await?;
             for vg_id in target_vgs.iter().copied() {
-                batch.push((
-                    vg_id,
-                    src.clone(),
-                    ext_id.clone(),
-                    media_type.clone(),
-                    url.clone(),
-                    provider_data.clone(),
-                ));
                 // Queue provider_media_links for grouped flush
-                let key = (provider_item_id, vg_id, src.clone());
+                let key = (video_game_source_id, vg_id, src.clone());
                 let entry = link_groups.entry(key).or_insert_with(|| LinkGroup {
                     urls: Vec::new(),
                     meta: provider_data.clone(),
@@ -3088,17 +2945,6 @@ impl ImportContext {
                     .urls
                     .push((url.clone(), Some(media_type.clone()), None, title.clone()));
                 pending_links += 1;
-                if batch.len() >= BATCH {
-                    // Convert to borrowed tuples for batch upsert
-                    let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                        .iter()
-                        .map(|(a, b, c, d, e, f)| {
-                            (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f)
-                        })
-                        .collect();
-                    let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-                    batch.clear();
-                }
                 if pending_links >= LINKS_BATCH {
                     flush_link_groups(self.cache.db(), &mut link_groups).await?;
                     pending_links = 0;
@@ -3107,19 +2953,7 @@ impl ImportContext {
             total_rows += 1;
             prog.tick(1);
         }
-        // Flush any remaining staged rows
-        if staging && !stage_buf.is_empty() {
-            let _ = insert_legacy_image_media_raw_batch(self.cache.db(), &stage_buf).await?;
-            stage_buf.clear();
-        }
-        if !batch.is_empty() {
-            let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                .iter()
-                .map(|(a, b, c, d, e, f)| (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f))
-                .collect();
-            let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-            batch.clear();
-        }
+
         if pending_links > 0 || !link_groups.is_empty() {
             flush_link_groups(self.cache.db(), &mut link_groups).await?;
             pending_links = 0;
@@ -3138,10 +2972,6 @@ impl ImportContext {
             return Ok(());
         }
         info!("importing legacy game_videos → game_media (video)");
-        let staging = std::env::var("MEDIA_STAGING")
-            .ok()
-            .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-            .unwrap_or(false);
         let cols = self.sqlite_columns("game_videos").await?;
         let mut select_cols: Vec<&str> = Vec::new();
         for c in [
@@ -3185,90 +3015,8 @@ impl ImportContext {
         );
         let mut stream = sqlx::query(&sql).persistent(false).fetch(&self.sqlite);
 
-        const BATCH: usize = 250;
         const LINKS_BATCH: usize = 800;
-        // For staging image thumbnails derived during video import
-        const STAGE_IMG_BATCH: usize = 1000;
-        let mut batch: Vec<(i64, String, String, String, String, Value)> =
-            Vec::with_capacity(BATCH);
         let mut total_rows = 0usize;
-        // Buffer for legacy_image_media_raw rows when staging is enabled in this video importer
-        #[derive(Clone)]
-        struct LegacyImageRawRowV {
-            legacy_id: i64,
-            legacy_product_id: i64,
-            legacy_video_game_id: i64,
-            provider_slug: Option<String>,
-            kind: String,
-            url: String,
-            title: Option<String>,
-            mime_type: Option<String>,
-            width: Option<i32>,
-            height: Option<i32>,
-            is_primary: Option<bool>,
-            attribution: Option<String>,
-            external_id: Option<String>,
-            legacy_metadata: Value,
-        }
-        async fn insert_legacy_image_media_raw_batch_v(
-            db: &Db,
-            rows: &[LegacyImageRawRowV],
-        ) -> Result<u64> {
-            use sqlx::types::Json;
-            if rows.is_empty() {
-                return Ok(0);
-            }
-            let legacy_id: Vec<i64> = rows.iter().map(|r| r.legacy_id).collect();
-            let legacy_product_id: Vec<i64> = rows.iter().map(|r| r.legacy_product_id).collect();
-            let legacy_video_game_id: Vec<i64> =
-                rows.iter().map(|r| r.legacy_video_game_id).collect();
-            let provider_slug: Vec<Option<String>> =
-                rows.iter().map(|r| r.provider_slug.clone()).collect();
-            let kind: Vec<String> = rows.iter().map(|r| r.kind.clone()).collect();
-            let url: Vec<String> = rows.iter().map(|r| r.url.clone()).collect();
-            let title: Vec<Option<String>> = rows.iter().map(|r| r.title.clone()).collect();
-            let mime_type: Vec<Option<String>> = rows.iter().map(|r| r.mime_type.clone()).collect();
-            let width: Vec<Option<i32>> = rows.iter().map(|r| r.width).collect();
-            let height: Vec<Option<i32>> = rows.iter().map(|r| r.height).collect();
-            let is_primary: Vec<Option<bool>> = rows.iter().map(|r| r.is_primary).collect();
-            let attribution: Vec<Option<String>> =
-                rows.iter().map(|r| r.attribution.clone()).collect();
-            let external_id: Vec<Option<String>> =
-                rows.iter().map(|r| r.external_id.clone()).collect();
-            let legacy_metadata: Vec<Json<Value>> = rows
-                .iter()
-                .map(|r| Json(r.legacy_metadata.clone()))
-                .collect();
-
-            let res = sqlx
-                ::query(
-                    "INSERT INTO public.legacy_image_media_raw \
-                 (legacy_id, legacy_product_id, legacy_video_game_id, provider_slug, kind, url, title, mime_type, width, height, is_primary, attribution, external_id, legacy_metadata) \
-                 SELECT * FROM UNNEST( \
-                   $1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[], \
-                   $7::text[], $8::text[], $9::int4[], $10::int4[], $11::bool[], $12::text[], \
-                   $13::text[], $14::jsonb[]) \
-                 ON CONFLICT DO NOTHING"
-                )
-                .persistent(false)
-                .bind(legacy_id)
-                .bind(legacy_product_id)
-                .bind(legacy_video_game_id)
-                .bind(provider_slug)
-                .bind(kind)
-                .bind(url)
-                .bind(title)
-                .bind(mime_type)
-                .bind(width)
-                .bind(height)
-                .bind(is_primary)
-                .bind(attribution)
-                .bind(external_id)
-                .bind(legacy_metadata)
-                .execute(&db.pool).await?;
-            Ok(res.rows_affected())
-        }
-        let mut stage_buf_img_v: Vec<LegacyImageRawRowV> = Vec::with_capacity(STAGE_IMG_BATCH);
         let mut vg_map_cache: HashMap<i64, Vec<i64>> = HashMap::new();
         #[derive(Default)]
         struct LinkGroup {
@@ -3281,10 +3029,10 @@ impl ImportContext {
             db: &Db,
             groups: &mut HashMap<(i64, i64, String), LinkGroup>,
         ) -> Result<()> {
-            for ((provider_item_id, vg_id, src), grp) in groups.drain() {
-                let _ = ensure_provider_media_links_with_meta(
+            for ((video_game_source_id, vg_id, src), grp) in groups.drain() {
+                let _ = ensure_vg_source_media_links_with_meta(
                     db,
-                    provider_item_id,
+                    video_game_source_id,
                     Some(vg_id),
                     &grp.urls,
                     &src,
@@ -3296,11 +3044,17 @@ impl ImportContext {
         }
         let mut prog = Progress::new("game_videos", None);
         while let Some(row) = stream.try_next().await? {
+            // Resolve target VG list:
+            // 1) If legacy row has video_game_id, treat it as legacy VG id and map through legacy_vg_map
+            // 2) Else, if legacy row has product_id, treat it as legacy VG id (per directive) and map
+            // 3) Fallback: map legacy product_id → platforms (old behavior)
             let mut target_vgs: Vec<i64> = Vec::new();
             if cols.contains("video_game_id") {
-                if let Ok(vg_id) = row.try_get::<i64, _>("video_game_id") {
-                    if vg_id > 0 {
-                        target_vgs.push(vg_id);
+                if let Ok(legacy_vg_id) = row.try_get::<i64, _>("video_game_id") {
+                    if legacy_vg_id > 0 {
+                        if let Some(pg_vg) = self.legacy_vg_map.get(&legacy_vg_id) {
+                            target_vgs.push(*pg_vg);
+                        }
                     }
                 }
             }
@@ -3310,32 +3064,41 @@ impl ImportContext {
                 } else {
                     0
                 };
+                // Treat product_id as legacy VG id first (per directive)
                 if legacy_pid > 0 {
-                    if let Some(v) = vg_map_cache.get(&legacy_pid) {
-                        target_vgs.extend_from_slice(v);
-                    } else {
-                        let mut vgs: Vec<i64> = Vec::new();
-                        if let Some(info) = self.product_map.get(&legacy_pid) {
-                            if let Some(title_id) = info.title_id {
-                                if let Some(platforms) = self.product_platforms.get(&legacy_pid) {
-                                    for pid in platforms {
-                                        let vg_id = self
-                                            .cache
-                                            .ensure_video_game(title_id, *pid, None)
-                                            .await?;
-                                        vgs.push(vg_id);
+                    if let Some(pg_vg) = self.legacy_vg_map.get(&legacy_pid) {
+                        target_vgs.push(*pg_vg);
+                    }
+                }
+                // If still empty, fallback to old product→platform expansion
+                if legacy_pid > 0 {
+                    if target_vgs.is_empty() {
+                        if let Some(v) = vg_map_cache.get(&legacy_pid) {
+                            target_vgs.extend_from_slice(v);
+                        } else {
+                            let mut vgs: Vec<i64> = Vec::new();
+                            if let Some(info) = self.product_map.get(&legacy_pid) {
+                                if let Some(title_id) = info.title_id {
+                                    if let Some(platforms) = self.product_platforms.get(&legacy_pid) {
+                                        for pid in platforms {
+                                            let vg_id = self
+                                                .cache
+                                                .ensure_video_game(title_id, *pid, None)
+                                                .await?;
+                                            vgs.push(vg_id);
+                                        }
                                     }
                                 }
                             }
+                            vgs.sort_unstable();
+                            vgs.dedup();
+                            vg_map_cache.insert(legacy_pid, vgs.clone());
+                            target_vgs.extend_from_slice(&vgs);
                         }
-                        vgs.sort_unstable();
-                        vgs.dedup();
-                        vg_map_cache.insert(legacy_pid, vgs.clone());
-                        target_vgs.extend_from_slice(&vgs);
                     }
                 }
             }
-            if target_vgs.is_empty() && !staging {
+            if target_vgs.is_empty() {
                 prog.tick(1);
                 continue;
             }
@@ -3354,16 +3117,16 @@ impl ImportContext {
                     None
                 };
                 let mut candidate = ext_raw.unwrap_or_default();
-                let mut picked_from_meta = false;
+                let mut _picked_from_meta = false;
                 if !(candidate.starts_with("http://") || candidate.starts_with("https://")) {
                     if let Some(mr) = meta_raw.as_ref() {
                         if let Ok(val) = serde_json::from_str::<Value>(mr) {
                             if let Some(u) = val.get("url").and_then(|v| v.as_str()) {
                                 candidate = u.to_string();
-                                picked_from_meta = true;
+                                _picked_from_meta = true;
                             } else if let Some(u) = val.get("video_url").and_then(|v| v.as_str()) {
                                 candidate = u.to_string();
-                                picked_from_meta = true;
+                                _picked_from_meta = true;
                             }
                         }
                     }
@@ -3478,34 +3241,7 @@ impl ImportContext {
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| source_fallback.clone());
-            if staging {
-                // Stage raw video row
-                let provider_slug_stage = if src.is_empty() {
-                    None
-                } else {
-                    Some(src.clone())
-                };
-                sqlx
-                    ::query(
-                        "INSERT INTO public.legacy_video_media_raw (legacy_id, legacy_product_id, legacy_video_game_id, provider_slug, kind, url, title, mime_type, duration_seconds, external_id, legacy_metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING"
-                    )
-                    .persistent(false)
-                    .bind(row.try_get::<i64, _>("id").unwrap_or(0))
-                    .bind(row.try_get::<i64, _>("product_id").unwrap_or(0))
-                    .bind(row.try_get::<i64, _>("video_game_id").unwrap_or(0))
-                    .bind(provider_slug_stage)
-                    .bind(kind.clone())
-                    .bind(&url)
-                    .bind(title.clone())
-                    .bind(mime_type.clone())
-                    .bind(duration.map(|d| d as i32))
-                    .bind(external_id.clone())
-                    .bind(provider_data.clone())
-                    .execute(&self.db.pool).await?;
-                total_rows += 1;
-                prog.tick(1);
-                continue;
-            }
+
             if src.is_empty() {
                 warn!(url=%url, "skipping video without a valid media source after fallback");
                 prog.tick(1);
@@ -3519,7 +3255,7 @@ impl ImportContext {
             } else {
                 format!("media:{}", ext_id)
             };
-            let provider_item_id = self
+            let video_game_source_id = self
                 .cache
                 .ensure_provider_item(provider_id, &pi_external, None, false)
                 .await?;
@@ -3530,15 +3266,7 @@ impl ImportContext {
                 "trailer"
             };
             for vg_id in target_vgs.iter().copied() {
-                batch.push((
-                    vg_id,
-                    src.clone(),
-                    ext_id.clone(),
-                    media_type.to_string(),
-                    url.clone(),
-                    provider_data.clone(),
-                ));
-                let key = (provider_item_id, vg_id, src.clone());
+                let key = (video_game_source_id, vg_id, src.clone());
                 let entry = link_groups.entry(key).or_insert_with(|| LinkGroup {
                     urls: Vec::new(),
                     meta: provider_data.clone(),
@@ -3550,16 +3278,6 @@ impl ImportContext {
                     title.clone(),
                 ));
                 pending_links += 1;
-                if batch.len() >= BATCH {
-                    let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                        .iter()
-                        .map(|(a, b, c, d, e, f)| {
-                            (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f)
-                        })
-                        .collect();
-                    let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-                    batch.clear();
-                }
                 if pending_links >= LINKS_BATCH {
                     flush_link_groups(self.cache.db(), &mut link_groups).await?;
                     pending_links = 0;
@@ -3567,13 +3285,6 @@ impl ImportContext {
             }
             total_rows += 1;
             prog.tick(1);
-        }
-        if !batch.is_empty() {
-            let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                .iter()
-                .map(|(a, b, c, d, e, f)| (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f))
-                .collect();
-            let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
         }
         if pending_links > 0 || !link_groups.is_empty() {
             flush_link_groups(self.cache.db(), &mut link_groups).await?;
@@ -3604,11 +3315,7 @@ impl ImportContext {
             .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
             .unwrap_or(false);
 
-        if self.legacy_vg_map.is_empty() || self.product_map.is_empty() {
-            if let Err(e) = self.rebuild_fallback_media_mappings().await {
-                warn!(error=?e, "gb_images fallback mapping rebuild failed");
-            }
-        }
+
         info!(
             mode = if direct_specialized {
                 "specialized"
@@ -3618,88 +3325,7 @@ impl ImportContext {
             "importing giant_bomb_game_images"
         );
 
-        let staging = std::env::var("MEDIA_STAGING")
-            .ok()
-            .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-            .unwrap_or(false);
-        // When staging is enabled, buffer rows and use UNNEST batch insert
-        const STAGE_BATCH_GB: usize = 1000;
-        #[derive(Clone)]
-        struct LegacyImageRawRowGB {
-            legacy_id: i64,
-            legacy_product_id: i64,
-            legacy_video_game_id: i64,
-            provider_slug: Option<String>,
-            kind: String,
-            url: String,
-            title: Option<String>,
-            mime_type: Option<String>,
-            width: Option<i32>,
-            height: Option<i32>,
-            is_primary: Option<bool>,
-            attribution: Option<String>,
-            external_id: Option<String>,
-            legacy_metadata: Value,
-        }
-        async fn insert_legacy_image_media_raw_batch_gb(
-            db: &Db,
-            rows: &[LegacyImageRawRowGB],
-        ) -> Result<u64> {
-            use sqlx::types::Json;
-            if rows.is_empty() {
-                return Ok(0);
-            }
-            let legacy_id: Vec<i64> = rows.iter().map(|r| r.legacy_id).collect();
-            let legacy_product_id: Vec<i64> = rows.iter().map(|r| r.legacy_product_id).collect();
-            let legacy_video_game_id: Vec<i64> =
-                rows.iter().map(|r| r.legacy_video_game_id).collect();
-            let provider_slug: Vec<Option<String>> =
-                rows.iter().map(|r| r.provider_slug.clone()).collect();
-            let kind: Vec<String> = rows.iter().map(|r| r.kind.clone()).collect();
-            let url: Vec<String> = rows.iter().map(|r| r.url.clone()).collect();
-            let title: Vec<Option<String>> = rows.iter().map(|r| r.title.clone()).collect();
-            let mime_type: Vec<Option<String>> = rows.iter().map(|r| r.mime_type.clone()).collect();
-            let width: Vec<Option<i32>> = rows.iter().map(|r| r.width).collect();
-            let height: Vec<Option<i32>> = rows.iter().map(|r| r.height).collect();
-            let is_primary: Vec<Option<bool>> = rows.iter().map(|r| r.is_primary).collect();
-            let attribution: Vec<Option<String>> =
-                rows.iter().map(|r| r.attribution.clone()).collect();
-            let external_id: Vec<Option<String>> =
-                rows.iter().map(|r| r.external_id.clone()).collect();
-            let legacy_metadata: Vec<Json<Value>> = rows
-                .iter()
-                .map(|r| Json(r.legacy_metadata.clone()))
-                .collect();
 
-            let res = sqlx
-                ::query(
-                    "INSERT INTO public.legacy_image_media_raw \
-                 (legacy_id, legacy_product_id, legacy_video_game_id, provider_slug, kind, url, title, mime_type, width, height, is_primary, attribution, external_id, legacy_metadata) \
-                 SELECT * FROM UNNEST( \
-                   $1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[], \
-                   $7::text[], $8::text[], $9::int4[], $10::int4[], $11::bool[], $12::text[], \
-                   $13::text[], $14::jsonb[]) \
-                 ON CONFLICT DO NOTHING"
-                )
-                .persistent(false)
-                .bind(legacy_id)
-                .bind(legacy_product_id)
-                .bind(legacy_video_game_id)
-                .bind(provider_slug)
-                .bind(kind)
-                .bind(url)
-                .bind(title)
-                .bind(mime_type)
-                .bind(width)
-                .bind(height)
-                .bind(is_primary)
-                .bind(attribution)
-                .bind(external_id)
-                .bind(legacy_metadata)
-                .execute(&db.pool).await?;
-            Ok(res.rows_affected())
-        }
-        let mut stage_buf_gb: Vec<LegacyImageRawRowGB> = Vec::with_capacity(STAGE_BATCH_GB);
         let cols = self.sqlite_columns("giant_bomb_game_images").await?;
         let sql = r#"
                         SELECT
@@ -3717,12 +3343,13 @@ impl ImportContext {
                             gbi.name AS caption,
                             gbi.metadata AS metadata,
                             gbg.video_game_id AS video_game_id,
-                            vg.product_id AS product_id,
+                            vgt.product_id AS product_id,
                             vg.normalized_title AS normalized_title,
                             vg.title AS vg_title
                         FROM giant_bomb_game_images gbi
                         LEFT JOIN giant_bomb_games gbg ON gbg.id = gbi.giant_bomb_game_id
                         LEFT JOIN video_games vg ON vg.id = gbg.video_game_id
+                        LEFT JOIN video_game_titles vgt ON vgt.id = vg.title_id
                         WHERE gbi.id > ?
                         ORDER BY gbi.id
                         LIMIT ?
@@ -3738,10 +3365,7 @@ impl ImportContext {
             .bind(chunk_limit)
             .fetch(&self.sqlite);
 
-        const BATCH: usize = 400;
         const LINKS_BATCH: usize = 800;
-        let mut batch: Vec<(i64, String, String, String, String, Value)> =
-            Vec::with_capacity(BATCH);
         #[derive(Default)]
         struct LinkGroup {
             urls: Vec<(String, Option<String>, Option<String>, Option<String>)>,
@@ -3758,7 +3382,7 @@ impl ImportContext {
             groups: &mut HashMap<(i64, i64, String), LinkGroup>,
         ) -> Result<()> {
             for ((pi, vg, src), g) in groups.drain() {
-                let _ = ensure_provider_media_links_with_meta(
+                let _ = ensure_vg_source_media_links_with_meta(
                     db,
                     pi,
                     Some(vg),
@@ -3831,11 +3455,13 @@ impl ImportContext {
                     {
                         tid
                     } else {
-                        ensure_title_without_product(
+                        let tid = ensure_title_without_product(
                             self.cache.db(),
                             title_txt.as_deref().unwrap_or(nt),
                         )
-                        .await?
+                        .await?;
+                        self.title_id_by_norm.insert(norm_key.clone(), tid);
+                        tid
                     };
                     let unknown =
                         ensure_platform(self.cache.db(), "unknown", Some("unknown")).await?;
@@ -3845,7 +3471,7 @@ impl ImportContext {
                         .await?;
                     target_vgs.push(vg_id);
                 }
-                if target_vgs.is_empty() && !staging {
+                if target_vgs.is_empty() {
                     prog.tick(1);
                     continue;
                 }
@@ -3861,7 +3487,7 @@ impl ImportContext {
             let meta_raw: Option<String> = row.try_get("metadata").ok();
             let mut pdata = serde_json::Map::new();
             pdata.insert("source".into(), Value::String(src.clone()));
-            pdata.insert("kind".into(), Value::String("screenshot".into()));
+            pdata.insert("kind".into(), Value::String("cover".into()));
             pdata.insert("url".into(), Value::String(url.clone()));
             if let Some(t) = title.as_ref() {
                 pdata.insert("title".into(), Value::String(t.clone()));
@@ -3874,46 +3500,13 @@ impl ImportContext {
             }
             let provider_data = Value::Object(pdata);
 
-            if staging {
-                // Buffer and batch insert into legacy_image_media_raw
-                let provider_slug_stage = source.clone().and_then(|s| {
-                    let t = s.trim();
-                    if t.is_empty() {
-                        None
-                    } else {
-                        Some(t.to_lowercase())
-                    }
-                });
-                stage_buf_gb.push(LegacyImageRawRowGB {
-                    legacy_id: row.try_get::<i64, _>("id").unwrap_or(0),
-                    legacy_product_id: row.try_get::<i64, _>("product_id").unwrap_or(0),
-                    legacy_video_game_id: row.try_get::<i64, _>("video_game_id").unwrap_or(0),
-                    provider_slug: provider_slug_stage,
-                    kind: "screenshot".to_string(),
-                    url: url.clone(),
-                    title: title.clone(),
-                    mime_type: None,
-                    width: None,
-                    height: None,
-                    is_primary: None,
-                    attribution: None,
-                    external_id: None,
-                    legacy_metadata: provider_data.clone(),
-                });
-                if stage_buf_gb.len() >= STAGE_BATCH_GB {
-                    let _ = insert_legacy_image_media_raw_batch_gb(self.cache.db(), &stage_buf_gb)
-                        .await?;
-                    stage_buf_gb.clear();
-                }
-                total_rows += 1;
-                continue;
-            }
+
 
             // Provider item linkage
             let ext_id = url.clone();
             let provider_id = self.provider_id_for_slug(&src).await?;
             let pi_external = format!("media:{}", ext_id);
-            let provider_item_id = self
+            let video_game_source_id = self
                 .cache
                 .ensure_provider_item(provider_id, &pi_external, None, false)
                 .await?;
@@ -3956,12 +3549,12 @@ impl ImportContext {
                         self.platform_slug_for_vg(vg).await?.map(|s| vec![s]);
                     sqlx
                         ::query(
-                            "INSERT INTO public.game_images (video_game_id, provider_item_id, kind, mime_type, width, height, url, original_url, thumbnail_url, small_url, super_url, attribution, metadata, source, title, caption, is_primary, platforms) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18 WHERE NOT EXISTS (SELECT 1 FROM public.game_images WHERE video_game_id=$1 AND url=$7)"
+                            "INSERT INTO public.game_images (video_game_id, video_game_source_id, kind, mime_type, width, height, url, original_url, thumbnail_url, small_url, super_url, attribution, metadata, source, title, caption, is_primary, platforms) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18 WHERE NOT EXISTS (SELECT 1 FROM public.game_images WHERE video_game_id=$1 AND url=$7)"
                         )
                         .persistent(false)
                         .bind(vg)
-                        .bind(provider_item_id)
-                        .bind(detected_kind.clone().unwrap_or_else(|| "screenshot".into()))
+                        .bind(video_game_source_id)
+                        .bind(detected_kind.clone().unwrap_or_else(|| "cover".into()))
                         .bind(mime)
                         .bind(width_i)
                         .bind(height_i)
@@ -3981,7 +3574,7 @@ impl ImportContext {
                 }
                 // link entries
                 for vg in target_vgs.iter().copied() {
-                    let key = (provider_item_id, vg, src.clone());
+                    let key = (video_game_source_id, vg, src.clone());
                     link_groups
                         .entry(key)
                         .or_insert_with(|| LinkGroup {
@@ -3989,7 +3582,7 @@ impl ImportContext {
                             meta: provider_data.clone(),
                         })
                         .urls
-                        .push((url.clone(), Some("screenshot".into()), None, title.clone()));
+                        .push((url.clone(), Some("cover".into()), None, title.clone()));
                     pending_links += 1;
                 }
                 if pending_links >= LINKS_BATCH {
@@ -4000,15 +3593,7 @@ impl ImportContext {
                 }
             } else {
                 for vg in target_vgs.iter().copied() {
-                    batch.push((
-                        vg,
-                        src.clone(),
-                        url.clone(),
-                        "screenshot".into(),
-                        url.clone(),
-                        provider_data.clone(),
-                    ));
-                    let key = (provider_item_id, vg, src.clone());
+                    let key = (video_game_source_id, vg, src.clone());
                     link_groups
                         .entry(key)
                         .or_insert_with(|| LinkGroup {
@@ -4016,20 +3601,8 @@ impl ImportContext {
                             meta: provider_data.clone(),
                         })
                         .urls
-                        .push((url.clone(), Some("screenshot".into()), None, title.clone()));
+                        .push((url.clone(), Some("cover".into()), None, title.clone()));
                     pending_links += 1;
-                }
-                if batch.len() >= BATCH {
-                    let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                        .iter()
-                        .map(|(a, b, c, d, e, f)| {
-                            (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f)
-                        })
-                        .collect();
-                    let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-                    batch.clear();
-                    // Opportunistic checkpoint flush
-                    let _ = self.save_checkpoint("gb_images_id", last_id_seen).await;
                 }
                 if pending_links >= LINKS_BATCH {
                     flush_groups(self.cache.db(), &mut link_groups).await?;
@@ -4042,17 +3615,7 @@ impl ImportContext {
             prog.tick(1);
         }
 
-        // Flush any remaining staged rows (gb images)
-        if staging && !stage_buf_gb.is_empty() {
-            let _ = insert_legacy_image_media_raw_batch_gb(self.cache.db(), &stage_buf_gb).await?;
-        }
-        if !batch.is_empty() {
-            let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                .iter()
-                .map(|(a, b, c, d, e, f)| (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f))
-                .collect();
-            let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-        }
+
         if pending_links > 0 || !link_groups.is_empty() {
             flush_groups(self.cache.db(), &mut link_groups).await?;
         }
@@ -4087,79 +3650,7 @@ impl ImportContext {
             info!("stage gb_videos:done — skipping import");
             return Ok(());
         }
-        // For stability keep videos in generic game_media path for now
-        let staging = std::env::var("MEDIA_STAGING")
-            .ok()
-            .map(|v| (v == "1" || v.eq_ignore_ascii_case("true")))
-            .unwrap_or(false);
-        // When staging is enabled, buffer rows and use UNNEST batch insert into legacy_video_media_raw
-        const STAGE_BATCH_GB_VID: usize = 1000;
-        #[derive(Clone)]
-        struct LegacyVideoRawRowGB {
-            legacy_id: i64,
-            legacy_product_id: i64,
-            legacy_video_game_id: i64,
-            provider_slug: Option<String>,
-            kind: String,
-            url: String,
-            title: Option<String>,
-            mime_type: Option<String>,
-            duration_seconds: Option<i32>,
-            external_id: Option<String>,
-            legacy_metadata: Value,
-        }
-        async fn insert_legacy_video_media_raw_batch_gb(
-            db: &Db,
-            rows: &[LegacyVideoRawRowGB],
-        ) -> Result<u64> {
-            use sqlx::types::Json;
-            if rows.is_empty() {
-                return Ok(0);
-            }
-            let legacy_id: Vec<i64> = rows.iter().map(|r| r.legacy_id).collect();
-            let legacy_product_id: Vec<i64> = rows.iter().map(|r| r.legacy_product_id).collect();
-            let legacy_video_game_id: Vec<i64> =
-                rows.iter().map(|r| r.legacy_video_game_id).collect();
-            let provider_slug: Vec<Option<String>> =
-                rows.iter().map(|r| r.provider_slug.clone()).collect();
-            let kind: Vec<String> = rows.iter().map(|r| r.kind.clone()).collect();
-            let url: Vec<String> = rows.iter().map(|r| r.url.clone()).collect();
-            let title: Vec<Option<String>> = rows.iter().map(|r| r.title.clone()).collect();
-            let mime_type: Vec<Option<String>> = rows.iter().map(|r| r.mime_type.clone()).collect();
-            let duration_seconds: Vec<Option<i32>> =
-                rows.iter().map(|r| r.duration_seconds).collect();
-            let external_id: Vec<Option<String>> =
-                rows.iter().map(|r| r.external_id.clone()).collect();
-            let legacy_metadata: Vec<Json<Value>> = rows
-                .iter()
-                .map(|r| Json(r.legacy_metadata.clone()))
-                .collect();
 
-            let res = sqlx
-                ::query(
-                    "INSERT INTO public.legacy_video_media_raw \
-                 (legacy_id, legacy_product_id, legacy_video_game_id, provider_slug, kind, url, title, mime_type, duration_seconds, external_id, legacy_metadata) \
-                 SELECT * FROM UNNEST( \
-                   $1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[], \
-                   $7::text[], $8::text[], $9::int4[], $10::text[], $11::jsonb[]) \
-                 ON CONFLICT DO NOTHING"
-                )
-                .persistent(false)
-                .bind(legacy_id)
-                .bind(legacy_product_id)
-                .bind(legacy_video_game_id)
-                .bind(provider_slug)
-                .bind(kind)
-                .bind(url)
-                .bind(title)
-                .bind(mime_type)
-                .bind(duration_seconds)
-                .bind(external_id)
-                .bind(legacy_metadata)
-                .execute(&db.pool).await?;
-            Ok(res.rows_affected())
-        }
-        let mut stage_buf_gb_vid: Vec<LegacyVideoRawRowGB> = Vec::with_capacity(STAGE_BATCH_GB_VID);
         let sql = r#"
             SELECT
               gbv.id AS id,
@@ -4176,20 +3667,18 @@ impl ImportContext {
               gbv.source AS source,
               gbv.guid AS external_id,
               gbv.metadata AS metadata,
-              gbg.video_game_id AS video_game_id,
-              vg.product_id AS product_id,
+                            gbg.video_game_id AS video_game_id,
+                            vgt.product_id AS product_id,
               vg.normalized_title AS normalized_title,
               vg.title AS vg_title
             FROM giant_bomb_game_videos gbv
             LEFT JOIN giant_bomb_games gbg ON gbg.id = gbv.giant_bomb_game_id
-            LEFT JOIN video_games vg ON vg.id = gbg.video_game_id
+                        LEFT JOIN video_games vg ON vg.id = gbg.video_game_id
+                        LEFT JOIN video_game_titles vgt ON vgt.id = vg.title_id
             ORDER BY gbv.id
         "#;
         let mut stream = sqlx::query(sql).persistent(false).fetch(&self.sqlite);
-        const BATCH: usize = 300;
         const LINKS_BATCH: usize = 600;
-        let mut batch: Vec<(i64, String, String, String, String, Value)> =
-            Vec::with_capacity(BATCH);
         #[derive(Default)]
         struct LinkGroup {
             urls: Vec<(String, Option<String>, Option<String>, Option<String>)>,
@@ -4205,7 +3694,7 @@ impl ImportContext {
             groups: &mut HashMap<(i64, i64, String), LinkGroup>,
         ) -> Result<()> {
             for ((pi, vg, src), g) in groups.drain() {
-                let _ = ensure_provider_media_links_with_meta(
+                let _ = ensure_vg_source_media_links_with_meta(
                     db,
                     pi,
                     Some(vg),
@@ -4265,11 +3754,13 @@ impl ImportContext {
                     {
                         tid
                     } else {
-                        ensure_title_without_product(
+                        let tid = ensure_title_without_product(
                             self.cache.db(),
                             title_txt.as_deref().unwrap_or(nt),
                         )
-                        .await?
+                        .await?;
+                        self.title_id_by_norm.insert(norm_key.clone(), tid);
+                        tid
                     };
                     let unknown =
                         ensure_platform(self.cache.db(), "unknown", Some("unknown")).await?;
@@ -4279,7 +3770,7 @@ impl ImportContext {
                         .await?;
                     target_vgs.push(vg_id);
                 }
-                if target_vgs.is_empty() && !staging {
+                if target_vgs.is_empty() {
                     prog.tick(1);
                     continue;
                 }
@@ -4295,10 +3786,12 @@ impl ImportContext {
             let external_id: Option<String> = row.try_get("external_id").ok();
             let meta_raw: Option<String> = row.try_get("metadata").ok();
 
+            let guessed_mime = guess_video_mime(&url).to_string();
             let mut pdata = serde_json::Map::new();
             pdata.insert("source".into(), Value::String(src.clone()));
             pdata.insert("kind".into(), Value::String("trailer".into()));
             pdata.insert("url".into(), Value::String(url.clone()));
+            pdata.insert("mime_type".into(), Value::String(guessed_mime.clone()));
             if let Some(t) = title.as_ref() {
                 pdata.insert("title".into(), Value::String(t.clone()));
             }
@@ -4316,57 +3809,18 @@ impl ImportContext {
             }
             let provider_data = Value::Object(pdata);
 
-            if staging {
-                // Buffer and batch insert
-                let provider_slug_stage = source.clone().and_then(|s| {
-                    let t = s.trim();
-                    if t.is_empty() {
-                        None
-                    } else {
-                        Some(t.to_lowercase())
-                    }
-                });
-                stage_buf_gb_vid.push(LegacyVideoRawRowGB {
-                    legacy_id: row.try_get::<i64, _>("id").unwrap_or(0),
-                    legacy_product_id: row.try_get::<i64, _>("product_id").unwrap_or(0),
-                    legacy_video_game_id: row.try_get::<i64, _>("video_game_id").unwrap_or(0),
-                    provider_slug: provider_slug_stage,
-                    kind: "trailer".to_string(),
-                    url: url.clone(),
-                    title: title.clone(),
-                    mime_type: None,
-                    duration_seconds: duration.map(|d| d as i32),
-                    external_id: external_id.clone(),
-                    legacy_metadata: provider_data.clone(),
-                });
-                if stage_buf_gb_vid.len() >= STAGE_BATCH_GB_VID {
-                    let _ =
-                        insert_legacy_video_media_raw_batch_gb(self.cache.db(), &stage_buf_gb_vid)
-                            .await?;
-                    stage_buf_gb_vid.clear();
-                }
-                total_rows += 1;
-                continue;
-            }
+
 
             let ext_id = external_id.clone().unwrap_or_else(|| url.clone());
             let provider_id = self.provider_id_for_slug(&src).await?;
             let pi_external = format!("media:{}", ext_id);
-            let provider_item_id = self
+            let video_game_source_id = self
                 .cache
                 .ensure_provider_item(provider_id, &pi_external, None, false)
                 .await?;
 
             for vg in target_vgs.iter().copied() {
-                batch.push((
-                    vg,
-                    src.clone(),
-                    ext_id.clone(),
-                    "trailer".into(),
-                    url.clone(),
-                    provider_data.clone(),
-                ));
-                let key = (provider_item_id, vg, src.clone());
+                let key = (video_game_source_id, vg, src.clone());
                 link_groups
                     .entry(key)
                     .or_insert_with(|| LinkGroup {
@@ -4377,16 +3831,6 @@ impl ImportContext {
                     .push((url.clone(), Some("video".into()), None, title.clone()));
                 pending_links += 1;
             }
-            if batch.len() >= BATCH {
-                let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                    .iter()
-                    .map(|(a, b, c, d, e, f)| {
-                        (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f)
-                    })
-                    .collect();
-                let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-                batch.clear();
-            }
             if pending_links >= LINKS_BATCH {
                 flush_groups(self.cache.db(), &mut link_groups).await?;
                 pending_links = 0;
@@ -4396,18 +3840,8 @@ impl ImportContext {
             prog.tick(1);
         }
 
-        // Flush any remaining staged rows (gb videos)
-        if staging && !stage_buf_gb_vid.is_empty() {
-            let _ =
-                insert_legacy_video_media_raw_batch_gb(self.cache.db(), &stage_buf_gb_vid).await?;
-        }
-        if !batch.is_empty() {
-            let borrowed: Vec<(i64, &str, &str, &str, &str, &Value)> = batch
-                .iter()
-                .map(|(a, b, c, d, e, f)| (*a, b.as_str(), c.as_str(), d.as_str(), e.as_str(), f))
-                .collect();
-            let _ = upsert_game_media_batch(self.cache.db(), &borrowed).await?;
-        }
+
+
         if pending_links > 0 || !link_groups.is_empty() {
             flush_groups(self.cache.db(), &mut link_groups).await?;
         }
@@ -4645,6 +4079,23 @@ struct LegacyCountry {
     name: String,
     currency_id: Option<i64>,
 }
+
+#[derive(Debug, Clone)]
+struct CurrencyUpsert {
+    legacy_id: i64,
+    code: String,
+    name: String,
+    minor_unit: i16,
+}
+
+#[derive(Debug, Clone)]
+struct CountryUpsert {
+    legacy_id: i64,
+    iso2: String,
+    iso3: String,
+    name: String,
+    currency_id: i64,
+}
 #[derive(Debug, sqlx::FromRow)]
 struct LegacyGamePlatform {
     product_id: i64,
@@ -4698,6 +4149,9 @@ struct VgUpd {
 }
 
 async fn ensure_hardware_row(db: &Db, product_id: i64) -> Result<()> {
+    if !table_exists(db, "hardware").await.unwrap_or(false) {
+        return Ok(());
+    }
     sqlx::query("INSERT INTO public.hardware (product_id) VALUES ($1) ON CONFLICT DO NOTHING")
         .persistent(false)
         .bind(product_id)
@@ -4708,42 +4162,114 @@ async fn ensure_hardware_row(db: &Db, product_id: i64) -> Result<()> {
 
 // Create or find a title without relying on products. Matches by normalized_title or lower(title).
 async fn ensure_title_without_product(db: &Db, title: &str) -> Result<i64> {
-    let norm = normalize_title(title);
-    if
-        let Some(row) = sqlx
-            ::query(
-                "SELECT id FROM public.video_game_titles WHERE normalized_title=$1 OR lower(title)=$1 ORDER BY id LIMIT 1"
-            )
-            .persistent(false)
-            .bind(&norm)
-            .fetch_optional(&db.pool).await?
-    {
-        return Ok(row.get::<i64, _>("id"));
-    }
-    let rec = sqlx
-        ::query(
-            "INSERT INTO public.video_game_titles (title, normalized_title) VALUES ($1,$2) RETURNING id"
-        )
-        .persistent(false)
-        .bind(title)
-        .bind(&norm)
-        .fetch_one(&db.pool).await?;
-    Ok(rec.get::<i64, _>("id"))
+    let trimmed = title.trim();
+    let final_title = if trimmed.is_empty() {
+        format!("Untitled {}", Uuid::new_v4().simple())
+    } else {
+        trimmed.to_string()
+    };
+    let norm = normalize_title(&final_title);
+    let title_slug = if norm.is_empty() {
+        format!("manual-title-{}", Uuid::new_v4().simple())
+    } else {
+        norm.clone()
+    };
+    let product_slug = format!("manual-product-{}", title_slug);
+    let product_id = ensure_product_named_with_platform(
+        db,
+        "software",
+        &product_slug,
+        &final_title,
+        "unknown",
+    )
+    .await?;
+    ensure_software_row(db, product_id).await?;
+    let title_id = ensure_video_game_title(db, product_id, &final_title, Some(&title_slug)).await?;
+    Ok(title_id)
 }
 
-async fn load_iso2_to_iso3(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<HashMap<String, String>> {
-    let rows = sqlx::query("SELECT iso2, iso3 FROM public.country_iso_map")
-        .persistent(false)
-        .fetch_all(pool)
-        .await?;
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            let iso2: String = r.get("iso2");
-            let iso3: String = r.get("iso3");
-            (iso2.to_ascii_uppercase(), iso3.to_ascii_uppercase())
-        })
-        .collect())
+async fn load_iso2_to_iso3(_pool: &sqlx::Pool<sqlx::Postgres>) -> Result<HashMap<String, String>> {
+    // country_iso_map table was removed in migration 0535
+    // Use static ISO 3166-1 alpha-2 to alpha-3 mapping
+    let mut map = HashMap::new();
+
+    // Common countries from SQLite database
+    map.insert("US".to_string(), "USA".to_string());
+    map.insert("CA".to_string(), "CAN".to_string());
+    map.insert("GB".to_string(), "GBR".to_string());
+    map.insert("AU".to_string(), "AUS".to_string());
+    map.insert("DK".to_string(), "DNK".to_string());
+    map.insert("JP".to_string(), "JPN".to_string());
+    map.insert("DE".to_string(), "DEU".to_string());
+    map.insert("FR".to_string(), "FRA".to_string());
+    map.insert("BR".to_string(), "BRA".to_string());
+    map.insert("RU".to_string(), "RUS".to_string());
+    map.insert("ZA".to_string(), "ZAF".to_string());
+    map.insert("GI".to_string(), "GIB".to_string());
+    map.insert("ER".to_string(), "ERI".to_string());
+    map.insert("FO".to_string(), "FRO".to_string());
+    map.insert("FM".to_string(), "FSM".to_string());
+    map.insert("TJ".to_string(), "TJK".to_string());
+    map.insert("HT".to_string(), "HTI".to_string());
+    map.insert("BT".to_string(), "BTN".to_string());
+    map.insert("SB".to_string(), "SLB".to_string());
+    map.insert("NI".to_string(), "NIC".to_string());
+    map.insert("LK".to_string(), "LKA".to_string());
+    map.insert("NE".to_string(), "NER".to_string());
+    map.insert("NG".to_string(), "NGA".to_string());
+    map.insert("TM".to_string(), "TKM".to_string());
+    map.insert("MQ".to_string(), "MTQ".to_string());
+    map.insert("PF".to_string(), "PYF".to_string());
+    map.insert("DM".to_string(), "DMA".to_string());
+    map.insert("TR".to_string(), "TUR".to_string());
+    map.insert("GE".to_string(), "GEO".to_string());
+
+    // EU is not a country code in ISO 3166-1, but map it to Eurozone placeholder
+    map.insert("EU".to_string(), "EUR".to_string());
+
+    // Extended coverage for common regions
+    map.insert("CN".to_string(), "CHN".to_string());
+    map.insert("IN".to_string(), "IND".to_string());
+    map.insert("IT".to_string(), "ITA".to_string());
+    map.insert("ES".to_string(), "ESP".to_string());
+    map.insert("MX".to_string(), "MEX".to_string());
+    map.insert("KR".to_string(), "KOR".to_string());
+    map.insert("NL".to_string(), "NLD".to_string());
+    map.insert("SE".to_string(), "SWE".to_string());
+    map.insert("NO".to_string(), "NOR".to_string());
+    map.insert("FI".to_string(), "FIN".to_string());
+    map.insert("PL".to_string(), "POL".to_string());
+    map.insert("BE".to_string(), "BEL".to_string());
+    map.insert("CH".to_string(), "CHE".to_string());
+    map.insert("AT".to_string(), "AUT".to_string());
+    map.insert("PT".to_string(), "PRT".to_string());
+    map.insert("IE".to_string(), "IRL".to_string());
+    map.insert("NZ".to_string(), "NZL".to_string());
+    map.insert("SG".to_string(), "SGP".to_string());
+    map.insert("HK".to_string(), "HKG".to_string());
+    map.insert("TW".to_string(), "TWN".to_string());
+    map.insert("AR".to_string(), "ARG".to_string());
+    map.insert("CL".to_string(), "CHL".to_string());
+    map.insert("CO".to_string(), "COL".to_string());
+    map.insert("PE".to_string(), "PER".to_string());
+    map.insert("VE".to_string(), "VEN".to_string());
+    map.insert("TH".to_string(), "THA".to_string());
+    map.insert("ID".to_string(), "IDN".to_string());
+    map.insert("MY".to_string(), "MYS".to_string());
+    map.insert("PH".to_string(), "PHL".to_string());
+    map.insert("VN".to_string(), "VNM".to_string());
+    map.insert("AE".to_string(), "ARE".to_string());
+    map.insert("SA".to_string(), "SAU".to_string());
+    map.insert("IL".to_string(), "ISR".to_string());
+    map.insert("EG".to_string(), "EGY".to_string());
+    map.insert("GR".to_string(), "GRC".to_string());
+    map.insert("CZ".to_string(), "CZE".to_string());
+    map.insert("HU".to_string(), "HUN".to_string());
+    map.insert("RO".to_string(), "ROU".to_string());
+    map.insert("UA".to_string(), "UKR".to_string());
+
+    info!("Loaded {} ISO2→ISO3 country code mappings", map.len());
+    Ok(map)
 }
 
 // ---------- Batch updater for VG ----------
@@ -5034,7 +4560,11 @@ fn parse_string_array(raw: &str) -> Option<Vec<String>> {
         .map(simple_slug)
         .filter(|s| !s.is_empty())
         .collect();
-    if parts.is_empty() { None } else { Some(parts) }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts)
+    }
 }
 
 fn simple_slug(value: &str) -> String {
@@ -5135,7 +4665,24 @@ fn normalize_product_kind(raw: Option<&str>) -> &'static str {
     "software"
 }
 
-// Note: No fallback mapping; media sources must match existing providers.slug.
+/// Normalize provider slugs to the canonical values used by this repo.
+///
+/// Important: this is for *provider identity* (providers.slug), not for media enum values.
+/// The PlayStation media source stored in `game_media.source` is normalized elsewhere to `psstore`.
+fn normalize_provider_slug(slug: &str) -> &str {
+    let s = slug.trim();
+    if s.eq_ignore_ascii_case("psn")
+        || s.eq_ignore_ascii_case("psstore")
+        || s.eq_ignore_ascii_case("ps_store")
+        || s.eq_ignore_ascii_case("ps")
+        || s.eq_ignore_ascii_case("playstation")
+        || s.eq_ignore_ascii_case("playstation_store")
+        || s.eq_ignore_ascii_case("playstation-store")
+    {
+        return "ps-store";
+    }
+    s
+}
 
 fn derive_provider_slug_from_url(url: &str) -> Option<String> {
     // Very lightweight host extraction (avoid adding heavy deps):
@@ -5162,11 +4709,11 @@ fn derive_provider_slug_from_url(url: &str) -> Option<String> {
         ("steampowered.com", "steam"),
         ("store.steampowered.com", "steam"),
         ("cdn.cloudflare.steamstatic.com", "steam"),
-        ("playstation.net", "psn"),
-        ("sonyentertainmentnetwork.com", "psn"),
-        ("pscdn.co", "psn"),
-        ("image.api.playstation.com", "psn"),
-        ("media.playstation.com", "psn"),
+        ("playstation.net", "ps-store"),
+        ("sonyentertainmentnetwork.com", "ps-store"),
+        ("pscdn.co", "ps-store"),
+        ("image.api.playstation.com", "ps-store"),
+        ("media.playstation.com", "ps-store"),
         ("rawg.io", "rawg"),
         ("media.rawg.io", "rawg"),
         ("data.rawg.io", "rawg"),

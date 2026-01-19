@@ -10,11 +10,13 @@ use i_miss_rust::database_ops::{
     alerts::evaluate_alerts,
     db::Db,
     giantbomb::ingest::ingest_from_file as gb_ingest_from_file,
+    itad,
     nexarda::provider::{
         NexardaOptions, NexardaProvider, Product, RegionDefinition, StoreConfig, StoreOverride,
     },
     rawg,
     steam::provider::SteamProvider,
+    tgdb,
 };
 use i_miss_rust::{
     database_ops::{igdb::client as igdb_client, xbox::provider as xbox_provider},
@@ -30,6 +32,11 @@ use tracing_subscriber::EnvFilter;
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+
+    // Allow `ingest --only rawg` without requiring the explicit `run` subcommand.
+    // If a subcommand is present, these args are ignored.
+    #[command(flatten)]
+    run: RunArgs,
 }
 
 #[derive(Subcommand, Debug)]
@@ -51,17 +58,81 @@ struct RunArgs {
     /// Disable post-run alert evaluation
     #[arg(long = "no-alerts", action = ArgAction::SetTrue)]
     no_alerts: bool,
+    /// Run continuously in a loop with specified delay in seconds (0 = continuous).
+    /// If omitted, falls back to INGEST_LOOP_SECS or a zero-delay loop.
+    #[arg(long)]
+    loop_secs: Option<u64>,
+    /// Run a single iteration (legacy behavior)
+    #[arg(long = "once", action = ArgAction::SetTrue)]
+    once: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum LoopMode {
+    Once,
+    Continuous { sleep_secs: u64 },
+}
+
+impl LoopMode {
+    fn is_continuous(self) -> bool {
+        matches!(self, LoopMode::Continuous { .. })
+    }
+
+    fn sleep_secs(self) -> Option<u64> {
+        match self {
+            LoopMode::Once => None,
+            LoopMode::Continuous { sleep_secs } => Some(sleep_secs),
+        }
+    }
+}
+
+const LOOP_SECS_ENV: &str = "INGEST_LOOP_SECS";
+const DEFAULT_LOOP_SECS: u64 = 0;
+
+fn resolve_loop_mode(args: &RunArgs) -> LoopMode {
+    if args.once {
+        return LoopMode::Once;
+    }
+
+    if let Some(secs) = args.loop_secs {
+        return LoopMode::Continuous { sleep_secs: secs };
+    }
+
+    if let Some(secs) = env_loop_secs() {
+        return LoopMode::Continuous { sleep_secs: secs };
+    }
+
+    LoopMode::Continuous {
+        sleep_secs: DEFAULT_LOOP_SECS,
+    }
+}
+
+fn env_loop_secs() -> Option<u64> {
+    std::env::var(LOOP_SECS_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, ValueEnum)]
 enum ProviderKey {
     Nexarda,
     Giantbomb,
+    #[value(
+        name = "playstation_store",
+        alias = "playstation",
+        alias = "psstore",
+        alias = "ps_store"
+    )]
     Playstation,
+    #[value(name = "steam_store", alias = "steam")]
     Steam,
+    #[value(name = "microsoft_store", alias = "xbox", alias = "microsoft")]
     Xbox,
     Igdb,
+    #[value(name = "thegamesdb", alias = "tgdb")]
+    Tgdb,
     Rawg,
+    Itad,
 }
 
 impl ProviderKey {
@@ -69,11 +140,13 @@ impl ProviderKey {
         match self {
             ProviderKey::Nexarda => "nexarda",
             ProviderKey::Giantbomb => "giantbomb",
-            ProviderKey::Playstation => "playstation",
-            ProviderKey::Steam => "steam",
-            ProviderKey::Xbox => "xbox",
+            ProviderKey::Playstation => "playstation_store",
+            ProviderKey::Steam => "steam_store",
+            ProviderKey::Xbox => "microsoft_store",
             ProviderKey::Igdb => "igdb",
+            ProviderKey::Tgdb => "thegamesdb",
             ProviderKey::Rawg => "rawg",
+            ProviderKey::Itad => "itad",
         }
     }
 
@@ -83,9 +156,11 @@ impl ProviderKey {
             ProviderKey::Giantbomb => "GiantBomb JSON",
             ProviderKey::Playstation => "PlayStation Store",
             ProviderKey::Steam => "Steam",
-            ProviderKey::Xbox => "Xbox Display Catalog",
+            ProviderKey::Xbox => "Microsoft/Xbox Store (DisplayCatalog)",
             ProviderKey::Igdb => "IGDB",
+            ProviderKey::Tgdb => "TheGamesDB (TGDB)",
             ProviderKey::Rawg => "RAWG",
+            ProviderKey::Itad => "IsThereAnyDeal (ITAD)",
         }
     }
 }
@@ -138,12 +213,13 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let cli = Cli::parse();
-    let run_args = match cli.command.unwrap_or(Command::Run(RunArgs::default())) {
-        Command::Run(args) => args,
-        Command::Providers => {
+    let run_args = match cli.command {
+        Some(Command::Run(args)) => args,
+        Some(Command::Providers) => {
             list_providers();
             return Ok(());
         }
+        None => cli.run,
     };
 
     let database_url =
@@ -152,11 +228,18 @@ async fn main() -> Result<()> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8);
-    let db = Db::connect(&database_url, max_conns).await?;
+    // Ingestion must be compatible with legacy/partial schemas.
+    // Applying migrations here can break on drifted schemas and is intentionally disabled.
+    let db = Db::connect_no_migrate(&database_url, max_conns).await?;
     let _ = sqlx::query("SET search_path TO public")
         .persistent(false)
         .execute(&db.pool)
         .await;
+
+    // Initialize schema cache to avoid repeated information_schema queries
+    info!("Initializing schema cache...");
+    i_miss_rust::database_ops::ingest_providers::init_schema_cache(&db).await?;
+    info!("Schema cache initialized successfully");
 
     let providers = determine_providers(&run_args);
     if providers.is_empty() {
@@ -164,70 +247,127 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    info!(providers = %providers.iter().map(|p| p.label()).collect::<Vec<_>>().join(","), "ingest run start");
-    let global_start = Instant::now();
-    let reports = run_providers(&db, &providers).await;
-
-    let mut touched: HashSet<i64> = HashSet::new();
-    for rep in &reports {
-        if rep.outcome.is_success() {
-            touched.extend(rep.offer_jurisdiction_ids.iter().copied());
-        }
-    }
-
-    if !run_args.no_alerts && !touched.is_empty() {
-        let ids: Vec<i64> = touched.into_iter().collect();
-        match evaluate_alerts(&db, &ids).await {
-            Ok(alerts) if alerts.is_empty() => {
-                info!("no alerts triggered in this run");
-            }
-            Ok(alerts) => {
-                info!(count = alerts.len(), "alerts triggered during ingest run");
-            }
-            Err(err) => {
-                warn!(error = %err, "alert evaluation failed");
+    let loop_mode = resolve_loop_mode(&run_args);
+    match loop_mode {
+        LoopMode::Once => info!("loop mode: single iteration"),
+        LoopMode::Continuous { sleep_secs } => {
+            if sleep_secs == 0 {
+                info!("loop mode: continuous (no delay between iterations)");
+            } else {
+                info!(sleep_secs, "loop mode: continuous with delay");
             }
         }
     }
+    // Initialize Xbox provider once if it's in the list to avoid re-auth loops
+    let xbox_instance = if providers.contains(&ProviderKey::Xbox) {
+        match xbox_provider::XboxProvider::new() {
+            Ok(p) => {
+                info!("Xbox provider initialized successfully (reusing for loop)");
+                Some(p)
+            }
+            Err(e) => {
+                warn!("Failed to initialize Xbox provider: {}. Will attempt fallback per-iteration.", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
-    for rep in &reports {
-        let base = rep.provider.display();
-        match &rep.outcome {
-            ProviderOutcome::Completed { note } => {
-                info!(
-                    provider = rep.provider.label(),
-                    status = rep.outcome.status_label(),
-                    elapsed_ms = rep.duration.as_millis() as u64,
-                    note = note.as_deref().unwrap_or(""),
-                    touched = rep.offer_jurisdiction_ids.len(),
-                    "{base} finished"
-                );
+    let mut iteration = 0u64;
+
+    loop {
+        iteration += 1;
+        let iteration_label = if loop_mode.is_continuous() {
+            format!(" (iteration {})", iteration)
+        } else {
+            String::new()
+        };
+
+        info!(
+            providers = %providers.iter().map(|p| p.label()).collect::<Vec<_>>().join(","),
+            iteration,
+            "ingest run start{}",
+            iteration_label
+        );
+        let global_start = Instant::now();
+        let reports = run_providers(&db, &providers, xbox_instance.as_ref()).await;
+
+        let mut touched: HashSet<i64> = HashSet::new();
+        for rep in &reports {
+            if rep.outcome.is_success() {
+                touched.extend(rep.offer_jurisdiction_ids.iter().copied());
             }
-            ProviderOutcome::Skipped { reason } => {
-                warn!(
-                    provider = rep.provider.label(),
-                    status = rep.outcome.status_label(),
-                    elapsed_ms = rep.duration.as_millis() as u64,
-                    reason = %reason,
-                    "{base} skipped"
-                );
+        }
+
+        if !run_args.no_alerts && !touched.is_empty() {
+            let ids: Vec<i64> = touched.into_iter().collect();
+            match evaluate_alerts(&db, &ids).await {
+                Ok(alerts) if alerts.is_empty() => {
+                    info!("no alerts triggered in this run");
+                }
+                Ok(alerts) => {
+                    info!(count = alerts.len(), "alerts triggered during ingest run");
+                }
+                Err(err) => {
+                    warn!(error = %err, "alert evaluation failed");
+                }
             }
-            ProviderOutcome::Failed { error } => {
-                error!(
-                    provider = rep.provider.label(),
-                    status = rep.outcome.status_label(),
-                    elapsed_ms = rep.duration.as_millis() as u64,
-                    error = %error,
-                    "{base} failed"
-                );
+        }
+
+        for rep in &reports {
+            let base = rep.provider.display();
+            match &rep.outcome {
+                ProviderOutcome::Completed { note } => {
+                    info!(
+                        provider = rep.provider.label(),
+                        status = rep.outcome.status_label(),
+                        elapsed_ms = rep.duration.as_millis() as u64,
+                        note = note.as_deref().unwrap_or(""),
+                        touched = rep.offer_jurisdiction_ids.len(),
+                        "{base} finished"
+                    );
+                }
+                ProviderOutcome::Skipped { reason } => {
+                    warn!(
+                        provider = rep.provider.label(),
+                        status = rep.outcome.status_label(),
+                        elapsed_ms = rep.duration.as_millis() as u64,
+                        reason = %reason,
+                        "{base} skipped"
+                    );
+                }
+                ProviderOutcome::Failed { error } => {
+                    error!(
+                        provider = rep.provider.label(),
+                        status = rep.outcome.status_label(),
+                        elapsed_ms = rep.duration.as_millis() as u64,
+                        error = %error,
+                        "{base} failed"
+                    );
+                }
+            }
+        }
+
+        info!(
+            total_ms = global_start.elapsed().as_millis() as u64,
+            iteration, "ingest run complete{}", iteration_label
+        );
+
+        match loop_mode {
+            LoopMode::Once => break,
+            LoopMode::Continuous { sleep_secs } => {
+                if sleep_secs > 0 {
+                    info!(sleep_secs = sleep_secs, "sleeping before next iteration");
+                    tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
+                } else {
+                    info!("no delay configured; yielding before next iteration");
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
             }
         }
     }
 
-    info!(
-        total_ms = global_start.elapsed().as_millis() as u64,
-        "ingest run complete"
-    );
     Ok(())
 }
 
@@ -238,7 +378,11 @@ fn list_providers() {
     }
 }
 
-async fn run_providers(db: &Db, providers: &[ProviderKey]) -> Vec<ProviderReport> {
+async fn run_providers(
+    db: &Db,
+    providers: &[ProviderKey],
+    xbox_instance: Option<&xbox_provider::XboxProvider>,
+) -> Vec<ProviderReport> {
     let mut reports = Vec::with_capacity(providers.len());
     for provider in providers.iter().copied() {
         let start = Instant::now();
@@ -247,9 +391,11 @@ async fn run_providers(db: &Db, providers: &[ProviderKey]) -> Vec<ProviderReport
             ProviderKey::Giantbomb => run_giantbomb(db).await,
             ProviderKey::Playstation => run_playstation(db).await,
             ProviderKey::Steam => run_steam(db).await,
-            ProviderKey::Xbox => run_xbox(db).await,
+            ProviderKey::Xbox => run_xbox(db, xbox_instance).await,
             ProviderKey::Igdb => run_igdb(db).await,
+            ProviderKey::Tgdb => run_tgdb(db).await,
             ProviderKey::Rawg => run_rawg(db).await,
+            ProviderKey::Itad => run_itad(db).await,
         };
         reports.push(ProviderReport {
             provider,
@@ -287,7 +433,9 @@ const DEFAULT_ORDER: &[ProviderKey] = &[
     ProviderKey::Steam,
     ProviderKey::Xbox,
     ProviderKey::Igdb,
+    ProviderKey::Tgdb,
     ProviderKey::Rawg,
+    ProviderKey::Itad,
 ];
 
 async fn run_nexarda(db: &Db) -> (ProviderOutcome, Vec<i64>) {
@@ -332,8 +480,15 @@ async fn run_giantbomb(db: &Db) -> (ProviderOutcome, Vec<i64>) {
             vec![],
         );
     }
-    let path = std::env::var("GIANT_BOMB_FILE")
-        .unwrap_or_else(|_| "keep/giant_bomb_games_detailed.json".into());
+    let path = std::env::var("GIANT_BOMB_FILE").unwrap_or_else(|_| {
+        if Path::new("merged_games.json").exists() {
+            "merged_games.json".into()
+        } else if Path::new("keep/giant_bomb_games_detailed.json").exists() {
+            "keep/giant_bomb_games_detailed.json".into()
+        } else {
+            "giant_bomb_games_detailed.json".into()
+        }
+    });
     if !Path::new(&path).exists() {
         return (
             ProviderOutcome::Skipped {
@@ -382,8 +537,17 @@ async fn run_steam(db: &Db) -> (ProviderOutcome, Vec<i64>) {
     }
 }
 
-async fn run_xbox(db: &Db) -> (ProviderOutcome, Vec<i64>) {
-    match xbox_provider::run_from_env(db).await {
+async fn run_xbox(
+    db: &Db,
+    xbox_instance: Option<&xbox_provider::XboxProvider>,
+) -> (ProviderOutcome, Vec<i64>) {
+    let result = if let Some(provider) = xbox_instance {
+        provider.run_ingest_cycle(db).await
+    } else {
+        xbox_provider::run_from_env(db).await
+    };
+
+    match result {
         Ok(_) => (
             ProviderOutcome::Completed {
                 note: Some("xbox ingest completed".into()),
@@ -395,6 +559,11 @@ async fn run_xbox(db: &Db) -> (ProviderOutcome, Vec<i64>) {
 }
 
 async fn run_igdb(db: &Db) -> (ProviderOutcome, Vec<i64>) {
+    // IGDB defaults to a potentially huge backfill; keep this runner safe-by-default.
+    // `top-50` is an alias of IGDB top-monthly mode (current month window) with a default limit of 50.
+    set_env_if_missing("IGDB_MODE", "top-50");
+    set_env_if_missing("IGDB_TOP_MONTHLY_LIMIT", "50");
+
     match igdb_client::run_from_env(db).await {
         Ok(_) => (
             ProviderOutcome::Completed {
@@ -407,6 +576,10 @@ async fn run_igdb(db: &Db) -> (ProviderOutcome, Vec<i64>) {
 }
 
 async fn run_rawg(db: &Db) -> (ProviderOutcome, Vec<i64>) {
+    // RAWG defaults to a wide year-range crawl; keep the ingest runner safe-by-default.
+    set_env_if_missing("RAWG_MODE", "top_monthly");
+    set_env_if_missing("RAWG_MAX_SCREENSHOTS", "4");
+
     let api_key = std::env::var("RAWG_API_KEY").ok();
     match rawg::sync(db, api_key).await {
         Ok(_) => (
@@ -415,6 +588,102 @@ async fn run_rawg(db: &Db) -> (ProviderOutcome, Vec<i64>) {
             },
             vec![],
         ),
+        Err(err) => classify_error(err),
+    }
+}
+
+fn set_env_if_missing(key: &str, value: &str) {
+    if std::env::var_os(key).is_none() {
+        set_env_value(key, value);
+    }
+}
+
+fn set_env_value(key: &str, value: &str) {
+    // Rust 2024: mutating process env is `unsafe` because it can be UB if other threads are
+    // concurrently reading/writing env. We only call this during provider dispatch setup.
+    unsafe {
+        std::env::set_var(key, value);
+    }
+}
+
+async fn run_tgdb(db: &Db) -> (ProviderOutcome, Vec<i64>) {
+    let enabled = std::env::var("CATALOGUE_SOURCE_TGDB_ENABLED")
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(true);
+    if !enabled {
+        return (
+            ProviderOutcome::Skipped {
+                reason: "CATALOGUE_SOURCE_TGDB_ENABLED disabled".into(),
+            },
+            vec![],
+        );
+    }
+
+    // TGDB generally requires an API key; keep the behavior explicit to avoid noisy 401 loops.
+    let api_key = std::env::var("TGDB_API_KEY")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let allow_anon = std::env::var("TGDB_ALLOW_ANON")
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(false);
+    if api_key.is_none() && !allow_anon {
+        return (
+            ProviderOutcome::Skipped {
+                reason: "missing TGDB_API_KEY (set TGDB_ALLOW_ANON=1 to try without it)".into(),
+            },
+            vec![],
+        );
+    }
+
+    match tgdb::sync(db, api_key).await {
+        Ok(_) => (
+            ProviderOutcome::Completed {
+                note: Some("tgdb sync completed".into()),
+            },
+            vec![],
+        ),
+        Err(err) => classify_error(err),
+    }
+}
+
+async fn run_itad(db: &Db) -> (ProviderOutcome, Vec<i64>) {
+    let enabled = std::env::var("ITAD_ENABLED")
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(true);
+    if !enabled {
+        return (
+            ProviderOutcome::Skipped {
+                reason: "ITAD_ENABLED disabled".into(),
+            },
+            vec![],
+        );
+    }
+
+    // ITAD generally requires an API key; keep behavior explicit to avoid noisy 401 loops.
+    let api_key = std::env::var("ITAD_API_KEY")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let allow_anon = std::env::var("ITAD_ALLOW_ANON")
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(false);
+    if api_key.is_none() && !allow_anon {
+        return (
+            ProviderOutcome::Skipped {
+                reason: "missing ITAD_API_KEY (set ITAD_ALLOW_ANON=1 to try without it)".into(),
+            },
+            vec![],
+        );
+    }
+
+    match itad::sync(db, api_key).await {
+        Ok(summary) => {
+            let touched: Vec<i64> = summary.offer_jurisdiction_ids.iter().copied().collect();
+            let note = format!(
+                "itad wrote {} price rows ({} current updates)",
+                summary.total_price_rows_written, summary.total_current_updates
+            );
+            (ProviderOutcome::Completed { note: Some(note) }, touched)
+        }
         Err(err) => classify_error(err),
     }
 }
@@ -456,12 +725,14 @@ where
 }
 
 fn classify_error(err: anyhow::Error) -> (ProviderOutcome, Vec<i64>) {
-    let msg = err.to_string();
-    if msg.to_ascii_lowercase().contains("missing env")
-        || msg.to_ascii_lowercase().contains("missing environment")
-    {
-        (ProviderOutcome::Skipped { reason: msg }, vec![])
+    // Prefer the full context chain so HTTP failures include status + response details.
+    // anyhow's alternate Display format prints the chain in a human-friendly way.
+    let msg_full = format!("{err:#}");
+    let msg_lc = msg_full.to_ascii_lowercase();
+
+    if msg_lc.contains("missing env") || msg_lc.contains("missing environment") {
+        (ProviderOutcome::Skipped { reason: msg_full }, vec![])
     } else {
-        (ProviderOutcome::Failed { error: msg }, vec![])
+        (ProviderOutcome::Failed { error: msg_full }, vec![])
     }
 }

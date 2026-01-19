@@ -1,7 +1,10 @@
+pub mod api;
 pub mod cli;
 pub mod database_ops;
 pub mod env_boot;
+pub mod normalization;
 pub mod orchestrator;
+
 pub mod util {
     pub mod env;
 }
@@ -9,18 +12,21 @@ pub use actix_web::http::header;
 
 // PS Store seeding pipeline (library function, not a bin)
 // Loops through categories and pages with offset to seed up to TOTAL_PAGES per locale
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::Utc;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use database_ops::db::{Db, PriceRow};
 use database_ops::ingest_providers::{
-    PostIngestSummary, ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_offer,
+    ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_offer,
     ensure_offer_jurisdiction, ensure_platform, ensure_product_named, ensure_provider,
-    ensure_provider_item, ensure_provider_media_links_with_meta, ensure_retailer, ensure_sellable,
-    ensure_software_row, ensure_video_game, ensure_video_game_title, ingest_prices,
-    link_provider_offer,
+    ensure_provider_item, ensure_retailer, ensure_sellable, ensure_software_row,
+    ensure_vg_source_media_links_with_meta, ensure_video_game, ensure_video_game_title,
+    ingest_prices, link_provider_offer, merge_video_game_metadata,
+    update_video_game_display_title_and_region, update_video_game_genres,
+    update_video_game_genres_if_empty, update_video_game_global_rating_if_null,
+    update_video_game_synopsis_prefer_longer, PostIngestSummary,
 };
 use database_ops::playstation::prices::parse_pricing_minor;
 // collections used later in function scope; kept minimal here
@@ -36,11 +42,50 @@ struct LocaleContext {
 }
 
 pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
+    async fn visible_table_exists(db: &Db, table: &str) -> Result<bool> {
+        let visible: bool = sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL")
+            .persistent(false)
+            .bind(table)
+            .fetch_one(&db.pool)
+            .await?;
+        Ok(visible)
+    }
+
     // Config via env
     // Centralized dotenv & env helpers
     crate::util::env::init_env();
     let regions = load_regions();
     if regions.is_empty() {
+        return Ok(PostIngestSummary::default());
+    }
+
+    // php-compat: if the target database doesn't have the tables the PS store pipeline
+    // requires, skip gracefully instead of failing hard.
+    //
+    // NOTE: we intentionally check *visibility* via search_path resolution because all
+    // queries in this binary are unqualified.
+    let required_tables = [
+        "platforms",
+        "providers",
+        "provider_items",
+        "video_game_sources",
+        "video_game_titles",
+        "video_games",
+    ];
+    let mut missing: Vec<&str> = Vec::new();
+    for t in required_tables {
+        if !visible_table_exists(db, t).await.unwrap_or(false) {
+            missing.push(t);
+        }
+    }
+    if !missing.is_empty() {
+        use crate::database_ops::ingest_providers::php_compat_schema;
+        let compat = php_compat_schema(db).await.unwrap_or(false);
+        tracing::warn!(
+            missing_tables = ?missing,
+            php_compat = compat,
+            "psstore_seed_pipeline: required schema missing; skipping PlayStation seed to preserve php-compat (no migrations)"
+        );
         return Ok(PostIngestSummary::default());
     }
     // Year window controls (inclusive)
@@ -109,7 +154,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
     let mut global_aggs: std::collections::HashMap<String, GlobalAgg> =
         std::collections::HashMap::new(); // product_key -> agg
     let mut provider_item_cache: std::collections::HashMap<String, i64> =
-        std::collections::HashMap::new(); // product_id -> provider_item_id
+        std::collections::HashMap::new(); // product_id -> video_game_source_id
     let mut sellable_cache: std::collections::HashMap<i64, i64> = std::collections::HashMap::new(); // video_game_title_id -> sellable_id
     let mut offer_cache: std::collections::HashMap<i64, i64> = std::collections::HashMap::new(); // sellable_id -> offer_id
     let mut offer_juris_cache: std::collections::HashMap<(i64, i64), i64> =
@@ -180,8 +225,8 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                 let mut price_rows: Vec<PriceRow> = Vec::with_capacity(list.len() * 2);
 
                 // Rating + detail fetch with semaphore to bound concurrency; maintain original order mapping
-                use futures::Future;
                 use futures::stream::{FuturesUnordered, StreamExt};
+                use futures::Future;
                 use std::pin::Pin;
                 use tokio::sync::Semaphore;
                 let rating_sem = std::sync::Arc::new(Semaphore::new(
@@ -241,8 +286,6 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                 }
 
                 // Collect batch media rows for this page (will flush once)
-                let mut media_batch: Vec<(i64, &str, String, String, String, serde_json::Value)> =
-                    Vec::new();
                 let mut rating_rows: Vec<(i64, String, f32, i64)> = Vec::new();
                 for (idx, it) in items.into_iter().enumerate() {
                     let mut it = it;
@@ -418,40 +461,27 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                             tracing::debug!(video_game_id=_vg_id, %slug, genres=?genres, "psstore genres extracted");
                         }
                         if let Some(syn) = extract_synopsis(detail_obj) {
-                            let _ = sqlx
-                                ::query(
-                                    "UPDATE video_games SET synopsis = CASE WHEN synopsis IS NULL OR length(synopsis) < length($1) THEN $1 ELSE synopsis END WHERE id=$2"
-                                )
-                                .persistent(false)
-                                .bind(&syn)
-                                .bind(_vg_id)
-                                .execute(&db.pool).await;
+                            let _ =
+                                update_video_game_synopsis_prefer_longer(db, _vg_id, &syn).await;
                         }
                         // Backfill: also set display_title and union region code, mirroring prices ingest behavior
-                        let _ = sqlx
-                            ::query(
-                                "UPDATE video_games SET display_title = COALESCE(display_title, $1), region_codes = CASE WHEN region_codes IS NULL THEN ARRAY[$2]::text[] ELSE (SELECT ARRAY(SELECT DISTINCT UNNEST(region_codes || ARRAY[$2]))) END WHERE id=$3"
-                            )
-                            .persistent(false)
-                            .bind(&title)
-                            .bind(&locale.split('-').nth(1).unwrap_or("us").to_uppercase())
-                            .bind(_vg_id)
-                            .execute(&db.pool).await;
+                        let _ = update_video_game_display_title_and_region(
+                            db,
+                            _vg_id,
+                            &title,
+                            locale.split('-').nth(1).unwrap_or("us"),
+                        )
+                        .await;
                         detail_media_sets = extract_detail_media(detail_obj);
                     }
 
                     // Backfill: write genres array directly on video_games if present
                     if !genres.is_empty() {
-                        let _ = sqlx::query("UPDATE video_games SET genres=$1 WHERE id=$2")
-                            .persistent(false)
-                            .bind(&genres)
-                            .bind(_vg_id)
-                            .execute(&db.pool)
-                            .await;
+                        let _ = update_video_game_genres(db, _vg_id, &genres).await;
                     }
 
                     // Provider mapping (if we have an external id)
-                    let mut provider_item_id: Option<i64> = None;
+                    let mut video_game_source_id: Option<i64> = None;
                     if let Some(ext) = &it.product_id {
                         let pid = if let Some(cached) = provider_item_cache.get(ext) {
                             *cached
@@ -461,7 +491,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                             pid
                         };
                         post_summary.record_provider_item(pid);
-                        provider_item_id = Some(pid);
+                        video_game_source_id = Some(pid);
                         link_provider_offer(db, pid, offer_id, Some(0.9)).await?;
                         // Media links (images + videos) with refined role classification & meta
                         let mut urls: Vec<(
@@ -471,7 +501,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                             Option<String>,
                         )> = Vec::new();
                         // Attempt to use detailed media (higher fidelity) if present
-                        let mut push_summary_media = |targets: &mut Vec<(
+                        let push_summary_media = |targets: &mut Vec<(
                             String,
                             Option<String>,
                             Option<String>,
@@ -535,9 +565,9 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                                 "platform_id": platform_id,
                                 "genres": genres,
                             });
-                            let _ = ensure_provider_media_links_with_meta(
+                            let _ = ensure_vg_source_media_links_with_meta(
                                 db,
-                                provider_item_id.unwrap(),
+                                video_game_source_id.unwrap(),
                                 Some(_vg_id),
                                 &urls,
                                 "psstore",
@@ -546,81 +576,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                             .await?;
                         }
 
-                        // Also persist into game_media with type + provider_data so games are directly linked
-                        // Map PS media structs to enum values
-                        let (image_media_slice, video_media_slice): (&[PsMedia], &[PsMedia]) =
-                            match detail_media_sets.as_ref() {
-                                Some((imgs, vids)) => {
-                                    let img_slice = if imgs.is_empty() {
-                                        it.media_images.as_slice()
-                                    } else {
-                                        imgs.as_slice()
-                                    };
-                                    let vid_slice = if vids.is_empty() {
-                                        it.media_videos.as_slice()
-                                    } else {
-                                        vids.as_slice()
-                                    };
-                                    (img_slice, vid_slice)
-                                }
-                                None => (it.media_images.as_slice(), it.media_videos.as_slice()),
-                            };
-                        let persist_one = |m: &PsMedia,
-                                           idx: usize|
-                         -> Option<(
-                            String,
-                            String,
-                            String,
-                            serde_json::Value,
-                        )> {
-                            let url = m.url.as_ref()?.to_string();
-                            let mt = m.media_type.as_deref().unwrap_or("");
-                            let role_raw = m.role.as_deref().unwrap_or("");
-                            let typename = m.typename.as_deref().unwrap_or("");
-                            let is_image = mt.eq_ignore_ascii_case("IMAGE")
-                                || typename.eq_ignore_ascii_case("IMAGE");
-                            let classified = if is_image {
-                                classify_image_role(role_raw)
-                                    .unwrap_or("screenshot")
-                                    .to_string()
-                            } else {
-                                classify_video_role(role_raw).to_string()
-                            };
-                            let provider_data = serde_json::json!({
-                                "typename": m.typename,
-                                "raw_type": m.media_type,
-                                "raw_role": m.role,
-                                "classified_type": classified,
-                                "order": idx,
-                                "locale": locale,
-                                "genres": genres,
-                            });
-                            Some((classified.clone(), url.clone(), url, provider_data))
-                        };
-                        for (i_img, m) in image_media_slice.iter().enumerate() {
-                            if let Some((media_type, url, _thumb, pdata)) = persist_one(m, i_img) {
-                                media_batch.push((
-                                    _vg_id,
-                                    "psn",
-                                    url.clone(),
-                                    media_type.clone(),
-                                    url.clone(),
-                                    pdata,
-                                ));
-                            }
-                        }
-                        for (i_vid, m) in video_media_slice.iter().enumerate() {
-                            if let Some((media_type, url, _thumb, pdata)) = persist_one(m, i_vid) {
-                                media_batch.push((
-                                    _vg_id,
-                                    "psn",
-                                    url.clone(),
-                                    media_type.clone(),
-                                    url.clone(),
-                                    pdata,
-                                ));
-                            }
-                        }
+
                     }
 
                     // Prices: only enqueue when not in backfill mode
@@ -630,7 +586,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                             if base > 0 {
                                 price_rows.push(PriceRow {
                                     offer_jurisdiction_id: oj_id,
-                                    provider_item_id,
+                                    video_game_source_id,
                                     recorded_at: now,
                                     amount_minor: base,
                                     tax_inclusive: true,
@@ -644,7 +600,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                             if discount > 0 {
                                 price_rows.push(PriceRow {
                                     offer_jurisdiction_id: oj_id,
-                                    provider_item_id,
+                                    video_game_source_id,
                                     recorded_at: now,
                                     amount_minor: discount,
                                     tax_inclusive: true,
@@ -684,19 +640,7 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
                         }
                     }
                 }
-                // Flush media batch once for this page
-                if !media_batch.is_empty() {
-                    use database_ops::ingest_providers::upsert_game_media_batch;
-                    // Convert to borrowed tuple slice
-                    let borrowed: Vec<(i64, &str, &str, &str, &str, &serde_json::Value)> =
-                        media_batch
-                            .iter()
-                            .map(|(vg, src, ext_id, mt, url, pdata)| {
-                                (*vg, *src, ext_id.as_str(), mt.as_str(), url.as_str(), pdata)
-                            })
-                            .collect();
-                    let _ = upsert_game_media_batch(db, &borrowed).await?;
-                }
+
                 if !rating_rows.is_empty() {
                     // Bulk upsert ratings_by_locale
                     use sqlx::QueryBuilder;
@@ -804,31 +748,114 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
         } else {
             None
         };
-        let _ = sqlx
-            ::query(
-                "UPDATE video_games SET metadata = CASE WHEN metadata IS NULL THEN jsonb_build_object('genres_union', $1, 'rating_global', $2, 'rating_count_global', $3) ELSE metadata || jsonb_build_object('genres_union', $1, 'rating_global', $2, 'rating_count_global', $3) END WHERE id=$4"
+        let patch = serde_json::json!({
+            "genres_union": genres_json,
+            "rating_global": global_avg,
+            "rating_count_global": agg.rating_count,
+        });
+        merge_video_game_metadata(db, agg.vg_id, patch).await?;
+        if let Some(ref g) = genres_array {
+            let _ = update_video_game_genres_if_empty(db, agg.vg_id, g).await;
+        }
+        let _ =
+            update_video_game_global_rating_if_null(db, agg.vg_id, global_avg, global_count).await;
+    }
+
+    // Persist a PS Store-derived monthly toplist based on aggregated star ratings.
+    // This is the missing bridge that lets Laravel Spotlight consume PS Store ratings
+    // via `provider_toplists`/`provider_toplist_items` just like RAWG/IGDB.
+    {
+        use chrono::Datelike;
+        use database_ops::ingest_providers::{
+            replace_provider_toplist_items, upsert_provider_toplist,
+        };
+
+        let min_count: i64 = std::env::var("PSSTORE_TOP_RATED_MIN_COUNT")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(50);
+
+        let limit: usize = std::env::var("PSSTORE_TOP_RATED_LIMIT")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(80);
+
+        let mut scored: Vec<(i64, f64, i64)> = global_aggs
+            .values()
+            .filter_map(|agg| {
+                if agg.rating_count < min_count {
+                    return None;
+                }
+                if agg.rating_count <= 0 {
+                    return None;
+                }
+                let avg = agg.rating_sum / (agg.rating_count as f64);
+                if !avg.is_finite() {
+                    return None;
+                }
+                Some((agg.vg_id, avg, agg.rating_count))
+            })
+            .collect();
+
+        // Highest average rating first; then prefer higher rating counts for stability.
+        scored.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.2.cmp(&a.2))
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        scored.truncate(limit);
+
+        let ranked_products: Vec<(u32, i64)> = scored
+            .iter()
+            .enumerate()
+            .map(|(idx, (product_id, _avg, _cnt))| ((idx as u32) + 1, *product_id))
+            .collect();
+
+        if !ranked_products.is_empty() {
+            let today = chrono::Utc::now().date_naive();
+            let period_start = chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+                .unwrap_or(today)
+                .format("%Y-%m-%d")
+                .to_string();
+            let (ny, nm) = if today.month() == 12 {
+                (today.year() + 1, 1)
+            } else {
+                (today.year(), today.month() + 1)
+            };
+            let period_end = chrono::NaiveDate::from_ymd_opt(ny, nm, 1)
+                .unwrap_or(today)
+                .format("%Y-%m-%d")
+                .to_string();
+
+            let toplist_slug = format!("psstore:top_monthly:{period_start}:{period_end}");
+            let meta = serde_json::json!({
+                "kind": "top_rated",
+                "metric": "weighted_average_star_rating",
+                "min_rating_count": min_count,
+                "limit": ranked_products.len(),
+                "regions": regions.clone(),
+            });
+
+            let toplist_id = upsert_provider_toplist(
+                db,
+                "psstore",
+                &toplist_slug,
+                "top_monthly",
+                Some(period_start.as_str()),
+                Some(period_end.as_str()),
+                None,
+                Some(meta),
             )
-            .persistent(false)
-            .bind(genres_json)
-            .bind(global_avg)
-            .bind(agg.rating_count)
-            .bind(agg.vg_id)
-            .execute(&db.pool).await?;
-        let _ = sqlx
-            ::query(
-                "UPDATE video_games SET \
-                    genres = CASE WHEN $1::text[] IS NOT NULL AND (genres IS NULL OR array_length(genres,1)=0) THEN $1 ELSE genres END, \
-                    average_rating = COALESCE(average_rating, $2), \
-                    rating_count = COALESCE(rating_count, $3), \
-                    rating_updated_at = CASE WHEN rating_updated_at IS NULL AND ($2 IS NOT NULL OR $3 IS NOT NULL) THEN now() ELSE rating_updated_at END \
-                 WHERE id=$4"
-            )
-            .persistent(false)
-            .bind(&genres_array)
-            .bind(global_avg)
-            .bind(global_count)
-            .bind(agg.vg_id)
-            .execute(&db.pool).await?;
+            .await?;
+
+            replace_provider_toplist_items(db, toplist_id, &ranked_products).await?;
+
+            eprintln!("INFO: psstore toplist snapshot written - provider=psstore, list_type=top_monthly, period={} to {}, items={}, min_count={}",
+                     period_start, period_end, ranked_products.len(), min_count);
+        } else {
+            eprintln!("INFO: psstore toplist snapshot skipped (no rated items over threshold) - provider=psstore, list_type=top_monthly, min_count={}", min_count);
+        }
     }
 
     // Export metrics JSON
@@ -890,13 +917,8 @@ pub async fn psstore_seed_pipeline(db: &Db) -> Result<PostIngestSummary> {
     // Optionally: set SUPABASE_SERVICE_ROLE env and verify connection role.
 
     post_summary.verify(db, provider_id).await?;
-    tracing::info!(
-        provider_id,
-        price_rows = post_summary.total_price_rows_written,
-        provider_items = post_summary.provider_item_ids.len(),
-        offer_jurisdictions = post_summary.offer_jurisdiction_ids.len(),
-        "psstore seed pipeline summary"
-    );
+    eprintln!("INFO: psstore seed pipeline summary - provider_id={}, price_rows={}, provider_items={}, offer_jurisdictions={}",
+             provider_id, post_summary.total_price_rows_written, post_summary.video_game_source_ids.len(), post_summary.offer_jurisdiction_ids.len());
 
     Ok(post_summary)
 }

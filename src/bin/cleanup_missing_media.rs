@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
     let rows = sqlx::query(
         "SELECT pi.id, pi.external_item_id, COUNT(pml.id) AS media_count\
          FROM public.provider_items pi\
-         LEFT JOIN public.provider_media_links pml ON pml.provider_item_id = pi.id\
+         LEFT JOIN public.provider_media_links pml ON pml.video_game_source_id = pi.id\
          GROUP BY pi.id, pi.external_item_id\
          HAVING COUNT(pml.id) = 0\
          ORDER BY pi.id DESC\

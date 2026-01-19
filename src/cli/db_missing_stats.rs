@@ -18,7 +18,7 @@ pub async fn run(cfg: DbMissingStatsConfig) -> Result<()> {
     let database_url = if let Some(url) = cfg.database_url.clone() {
         url
     } else {
-        env_util::db_url()? 
+        env_util::db_url()?
     };
     let db = Db::connect(&database_url, 5).await?;
 

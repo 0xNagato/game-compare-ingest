@@ -78,8 +78,8 @@ impl MicrosoftStoreIngest {
 
         for pid in &self.product_ids {
             match self.ingest_one(db, provider_id, retailer_id, usd_id, us_nat_id, pid).await {
-                Ok((provider_item_id, rows)) => {
-                    post_summary.record_provider_item(provider_item_id);
+                Ok((video_game_source_id, rows)) => {
+                    post_summary.record_provider_item(video_game_source_id);
                     if rows.is_empty() {
                         warn!(product_id=%pid, "no prices extracted");
                         items_processed += 1;
@@ -121,7 +121,7 @@ impl MicrosoftStoreIngest {
         info!(
             provider_id,
             price_rows = post_summary.total_price_rows_written,
-            provider_items = post_summary.provider_item_ids.len(),
+            provider_items = post_summary.video_game_source_ids.len(),
             offer_jurisdictions = post_summary.offer_jurisdiction_ids.len(),
             "xbox ingest verification complete"
         );
@@ -206,19 +206,19 @@ impl MicrosoftStoreIngest {
         };
         let offer_id = ensure_offer(db, sellable_id, retailer_id, Some(product_id)).await?;
         let oj_id = ensure_offer_jurisdiction(db, offer_id, jurisdiction_id, currency_id).await?;
-        let provider_item_id = ensure_provider_item(
+        let video_game_source_id = ensure_provider_item(
             db,
             provider_id,
             product_id,
             Some(body.clone())
         ).await?;
-        link_provider_offer(db, provider_item_id, offer_id, Some(0.9)).await?;
+        link_provider_offer(db, video_game_source_id, offer_id, Some(0.9)).await?;
 
         let mut rows: Vec<PriceRow> = Vec::new();
         if let Some(fin) = price_minor {
             rows.push(PriceRow {
                 offer_jurisdiction_id: oj_id,
-                provider_item_id: Some(provider_item_id),
+                video_game_source_id: Some(video_game_source_id),
                 recorded_at: Utc::now(),
                 amount_minor: fin,
                 tax_inclusive: true,
@@ -232,7 +232,7 @@ impl MicrosoftStoreIngest {
                 // discount
                 rows.push(PriceRow {
                     offer_jurisdiction_id: oj_id,
-                    provider_item_id: Some(provider_item_id),
+                    video_game_source_id: Some(video_game_source_id),
                     recorded_at: Utc::now(),
                     amount_minor: orig,
                     tax_inclusive: true,
@@ -242,6 +242,6 @@ impl MicrosoftStoreIngest {
                 });
             }
         }
-        Ok((provider_item_id, rows))
+        Ok((video_game_source_id, rows))
     }
 }

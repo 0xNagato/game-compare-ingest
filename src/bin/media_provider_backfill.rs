@@ -1,23 +1,29 @@
 use anyhow::{Context, Result};
 use i_miss_rust::database_ops::db::Db; // for existing helpers only (reuse pool)
 use i_miss_rust::database_ops::ingest_providers::{
-    ensure_provider_item, ensure_provider_media_links_with_meta,
+    ensure_provider_item, ensure_vg_source_media_links_with_meta,
 };
 use i_miss_rust::util::env as env_util;
 use serde_json::Value;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::Row;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::{env, str::FromStr};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_util::bootstrap_cli("media_provider_backfill");
-    let db_url = env::var("SUPABASE_DB_URL")
-        .or_else(|_| env::var("DATABASE_URL"))
-        .or_else(|_| env::var("DB_URL"))?;
-    let connect_opts = PgConnectOptions::from_str(&db_url)?.statement_cache_capacity(0);
+    let db_url = env_util::db_url_prefer_session()
+        .or_else(|_| env::var("DB_URL").map_err(anyhow::Error::new))
+        .context("Set SUPABASE_IPV6_DB / SUPABASE_DB_URL / DATABASE_URL / DB_URL")?;
+    let mut connect_opts = PgConnectOptions::from_str(&db_url)?.statement_cache_capacity(0);
+
+    // Ensure TLS is enabled when DSN contains sslmode=require
+    if db_url.contains("sslmode=require") && !db_url.contains("sslmode=disable") {
+        connect_opts = connect_opts.ssl_mode(PgSslMode::Require);
+    }
+
     let pool = PgPoolOptions::new()
-        .max_connections(6)
+        .max_connections(1)
         .connect_with(connect_opts)
         .await?;
     let db = Db { pool }; // minimal wrapper (Db::connect_no_migrate already performed earlier in import flow; we only need pool here)
@@ -26,7 +32,7 @@ async fn main() -> Result<()> {
     let limit: i64 = env::var("BACKFILL_LIMIT")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(500);
+        .unwrap_or(50000);
 
     // Select game_media rows that have a known provider (source matches providers.slug) but no provider_media_links entry
     // Reconstruct provider_item and provider_media_links idempotently.
@@ -38,7 +44,7 @@ async fn main() -> Result<()> {
             LEFT JOIN public.provider_items pi
                ON pi.provider_id = p.id AND pi.external_id = 'media:' || COALESCE(gm.external_id, gm.url)
             LEFT JOIN public.provider_media_links pml
-               ON pml.provider_item_id = pi.id AND pml.url = gm.url
+               ON pml.video_game_source_id = pi.id AND pml.url = gm.url
             WHERE gm.source IS NOT NULL AND gm.source <> '' AND pml.id IS NULL
             LIMIT $1"#
         )
@@ -86,7 +92,7 @@ async fn main() -> Result<()> {
             "media:{}",
             external_id.clone().unwrap_or_else(|| url.clone())
         );
-        let provider_item_id =
+        let video_game_source_id =
             match ensure_provider_item(&db, provider_id, &pi_external, None).await {
                 Ok(id) => id,
                 Err(e) => {
@@ -97,9 +103,9 @@ async fn main() -> Result<()> {
             };
         let url_kind_pair = (url.clone(), kind.clone());
         let meta_clone = meta_val.clone();
-        if let Err(e) = ensure_provider_media_links_with_meta(
+        if let Err(e) = ensure_vg_source_media_links_with_meta(
             &db,
-            provider_item_id,
+            video_game_source_id,
             Some(vg_id),
             &[(url_kind_pair.0.clone(), url_kind_pair.1.clone(), None, None)],
             &source,

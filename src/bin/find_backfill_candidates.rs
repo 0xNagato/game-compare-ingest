@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::Datelike;
 use i_miss_rust::database_ops::db::Db;
 use i_miss_rust::util::env;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::{Execute, Postgres, QueryBuilder, Row};
 use tracing::{debug, info, warn};
 
@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     let limit: i64 = std::env::var("BACKFILL_LIMIT")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(100);
+        .unwrap_or(1000);
 
     info!(
         year_min,

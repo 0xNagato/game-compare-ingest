@@ -1,5 +1,5 @@
-use actix_web::{App, HttpResponse, HttpServer, Responder, web};
-use anyhow::{Context, Result, anyhow};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use anyhow::{anyhow, Context, Result};
 use dotenv::dotenv; // kept for local use, but we call through env_boot::ensure_dotenv()
 use futures::future::join_all;
 use i_miss_rust::util::env as env_util;
@@ -11,7 +11,7 @@ use std::env;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use tokio::process::Command;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct WorkerSpec {
@@ -147,127 +147,160 @@ pub async fn run_from_env() -> Result<()> {
             // Optional auto-seed phase: enqueue initial backlog tasks if queue empty.
             // Enabled when MANAGER_AUTO_SEED=1. Intentionally runs after workers start.
             if env::var("MANAGER_AUTO_SEED").ok().as_deref() == Some("1") {
+                // Optional periodic schedule: if interval is set, keep seeding when queues are idle.
+                // Default is 0 (seed once only).
+                let interval_secs: u64 = env::var("MANAGER_AUTO_SEED_INTERVAL_SECS")
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+
                 // wait a bit longer for workers to bind their HTTP servers
                 sleep(Duration::from_secs(1)).await;
-                for spec in &state_clone.specs {
-                    let base = format!("http://{}", spec.addr);
-                    // Check pgmq metrics to see if queue already has visible jobs (>0)
-                    let metrics_url = format!("{}/api/pgmq_metrics", base);
-                    let mut should_seed = true;
-                    if let Ok(resp) = state_clone.http.get(&metrics_url).send().await {
-                        if let Ok(val) = resp.json::<serde_json::Value>().await {
-                            // val shape: { ok: true, metrics: [ {"queue_name":"...","visible":N,...} ] }
-                            let visible = val
-                                .get("metrics")
-                                .and_then(|m| m.get(0))
-                                .and_then(|row| row.get("visible"))
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
-                            if visible > 0 {
-                                should_seed = false;
+
+                loop {
+                    for spec in &state_clone.specs {
+                        let base = format!("http://{}", spec.addr);
+
+                        // Check pgmq metrics to see if queue already has visible/inflight jobs
+                        let metrics_url = format!("{}/api/pgmq_metrics", base);
+                        let mut should_seed = true;
+                        if let Ok(resp) = state_clone.http.get(&metrics_url).send().await {
+                            if let Ok(val) = resp.json::<serde_json::Value>().await {
+                                // val shape: { ok: true, metrics: [ {"queue_name":"...", ... } ] }
+                                let row = val.get("metrics").and_then(|m| m.get(0));
+                                let visible = row
+                                    .and_then(|r| r.get("visible"))
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0);
+                                let inflight = row
+                                    .and_then(|r| {
+                                        r.get("inflight")
+                                            .or_else(|| r.get("in_flight"))
+                                            .or_else(|| r.get("in_flight_messages"))
+                                            .or_else(|| r.get("in_flight_count"))
+                                    })
+                                    .and_then(|v| v.as_u64())
+                                    .unwrap_or(0);
+
+                                if visible > 0 || inflight > 0 {
+                                    should_seed = false;
+                                }
                             }
                         }
-                    }
-                    if !should_seed {
-                        continue;
+                        if !should_seed {
+                            continue;
+                        }
+
+                        // Derive provider & task seeds from worker name
+                        let (provider, task, args) = match spec.name.as_str() {
+                            // PlayStation store catalog (broad product ingestion)
+                            "psstore_ingest" => (
+                                "psstore",
+                                "catalog",
+                                json!({
+                                    "pages": env::var("SEED_PS_PAGES").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(50),
+                                    "page_size": env::var("SEED_PS_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(250),
+                                    "page_concurrency": env::var("SEED_PS_CONCURRENCY").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(3),
+                                    "rps": env::var("SEED_PS_RPS").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(4)
+                                }),
+                            ),
+                            // IGDB (default: top-monthly unless overridden)
+                            "igdb_catalog" => (
+                                "igdb",
+                                "catalog",
+                                json!({
+                                    "page_size": env::var("SEED_IGDB_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(500),
+                                    "max_pages": env::var("SEED_IGDB_MAX_PAGES").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(40),
+                                    "mode": env::var("SEED_IGDB_MODE").unwrap_or_else(|_| "top-monthly".to_string())
+                                }),
+                            ),
+                            // GiantBomb JSON file ingest (one-shot); limit controllable
+                            "gb_catalog" => (
+                                "giantbomb",
+                                "json",
+                                json!({
+                                    "limit": env::var("SEED_GB_LIMIT").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(4000)
+                                }),
+                            ),
+                            // Steam catalog (run provider environment logic)
+                            "steam_ingest" => ("steam", "catalog", json!({})),
+                            // Nexarda catalog ingest
+                            "nexarda_ingest" => (
+                                "nexarda",
+                                "catalog",
+                                json!({
+                                    "reqs_per_min": env::var("SEED_NEXARDA_REQS_PER_MIN").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(30),
+                                    "concurrency": env::var("SEED_NEXARDA_CONCURRENCY").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(1)
+                                }),
+                            ),
+                            // Xbox catalog (all)
+                            "xbox_ingest" => (
+                                "xbox",
+                                "catalog",
+                                json!({
+                                    "chunk_size": env::var("SEED_XBOX_CHUNK_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(100),
+                                    "reqs_per_min": env::var("SEED_XBOX_REQS_PER_MIN").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(20)
+                                }),
+                            ),
+                            // RAWG catalog/toplists (mode optional; defaults to range)
+                            "rawg_ingest" => (
+                                "rawg",
+                                "catalog",
+                                json!({
+                                    "year_min": env::var("SEED_RAWG_YEAR_MIN").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2015),
+                                    "year_max": env::var("SEED_RAWG_YEAR_MAX").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2025),
+                                    "page_size": env::var("SEED_RAWG_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(40),
+                                    "mode": env::var("SEED_RAWG_MODE").unwrap_or_else(|_| "range".to_string())
+                                }),
+                            ),
+                            // TheGamesDB mirror
+                            "tgdb_ingest" => (
+                                "tgdb",
+                                "catalog",
+                                json!({
+                                    "year_min": env::var("SEED_TGDB_YEAR_MIN").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2015),
+                                    "year_max": env::var("SEED_TGDB_YEAR_MAX").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2025),
+                                    "page_size": env::var("SEED_TGDB_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(50)
+                                }),
+                            ),
+                            // Itad pricing
+                            "itad_pricing" => (
+                                "itad",
+                                "prices_scan",
+                                json!({
+                                    "deals_limit": env::var("SEED_ITAD_DEALS_LIMIT").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(50)
+                                }),
+                            ),
+                            // default fallback
+                            _ => (spec.name.as_str(), "catalog", json!({})),
+                        };
+
+                        // Enqueue
+                        let enqueue_url = format!("{}/api/enqueue", base);
+                        let payload = json!({"provider": provider, "task": task, "args": args});
+                        if let Err(err) = state_clone
+                            .http
+                            .post(&enqueue_url)
+                            .json(&payload)
+                            .send()
+                            .await
+                        {
+                            eprintln!(
+                                "[manager] seed enqueue failed worker={} err={err}",
+                                spec.name
+                            );
+                        } else {
+                            println!(
+                                "[manager] seeded worker={} provider={} task={}",
+                                spec.name, provider, task
+                            );
+                        }
                     }
 
-                    // Derive provider & task seeds from worker name
-                    let (provider, task, args) = match spec.name.as_str() {
-                        // PlayStation store catalog (broad product ingestion)
-                        "psstore_ingest" => (
-                            "psstore",
-                            "catalog",
-                            json!({
-                                "pages": env::var("SEED_PS_PAGES").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(50),
-                                "page_size": env::var("SEED_PS_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(250),
-                                "page_concurrency": env::var("SEED_PS_CONCURRENCY").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(3),
-                                "rps": env::var("SEED_PS_RPS").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(4)
-                            }),
-                        ),
-                        // IGDB full catalog crawl
-                        "igdb_catalog" => (
-                            "igdb",
-                            "catalog",
-                            json!({
-                                "page_size": env::var("SEED_IGDB_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(500),
-                                "max_pages": env::var("SEED_IGDB_MAX_PAGES").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(40)
-                            }),
-                        ),
-                        // GiantBomb JSON file ingest (one-shot); limit controllable
-                        "gb_catalog" => (
-                            "giantbomb",
-                            "json",
-                            json!({
-                                "limit": env::var("SEED_GB_LIMIT").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(4000)
-                            }),
-                        ),
-                        // Steam catalog (run provider environment logic)
-                        "steam_ingest" => ("steam", "catalog", json!({})),
-                        // Nexarda catalog ingest
-                        "nexarda_ingest" => (
-                            "nexarda",
-                            "catalog",
-                            json!({
-                                "reqs_per_min": env::var("SEED_NEXARDA_REQS_PER_MIN").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(30),
-                                "concurrency": env::var("SEED_NEXARDA_CONCURRENCY").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(1)
-                            }),
-                        ),
-                        // Xbox catalog (all)
-                        "xbox_ingest" => (
-                            "xbox",
-                            "catalog",
-                            json!({
-                                "chunk_size": env::var("SEED_XBOX_CHUNK_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(100),
-                                "reqs_per_min": env::var("SEED_XBOX_REQS_PER_MIN").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(20)
-                            }),
-                        ),
-                        // RAWG catalog
-                        "rawg_ingest" => (
-                            "rawg",
-                            "catalog",
-                            json!({
-                                "year_min": env::var("SEED_RAWG_YEAR_MIN").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2015),
-                                "year_max": env::var("SEED_RAWG_YEAR_MAX").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2025),
-                                "page_size": env::var("SEED_RAWG_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(40)
-                            }),
-                        ),
-                        // TheGamesDB mirror
-                        "tgdb_ingest" => (
-                            "tgdb",
-                            "catalog",
-                            json!({
-                                "year_min": env::var("SEED_TGDB_YEAR_MIN").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2015),
-                                "year_max": env::var("SEED_TGDB_YEAR_MAX").ok().and_then(|s| s.parse::<i64>().ok()).unwrap_or(2025),
-                                "page_size": env::var("SEED_TGDB_PAGE_SIZE").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(50)
-                            }),
-                        ),
-                        // Itad pricing (skip if no implementation yet; seed placeholder task if present later)
-                        "itad_pricing" => ("itad", "prices_scan", json!({})),
-                        // default fallback
-                        _ => (spec.name.as_str(), "catalog", json!({})),
-                    };
-
-                    // Enqueue
-                    let enqueue_url = format!("{}/api/enqueue", base);
-                    let payload = json!({"provider": provider, "task": task, "args": args});
-                    if let Err(err) = state_clone
-                        .http
-                        .post(&enqueue_url)
-                        .json(&payload)
-                        .send()
-                        .await
-                    {
-                        eprintln!(
-                            "[manager] seed enqueue failed worker={} err={err}",
-                            spec.name
-                        );
-                    } else {
-                        println!(
-                            "[manager] seeded worker={} provider={} task={}",
-                            spec.name, provider, task
-                        );
+                    if interval_secs == 0 {
+                        break;
                     }
+                    sleep(Duration::from_secs(interval_secs)).await;
                 }
             }
         });

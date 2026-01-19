@@ -10,7 +10,7 @@ use serde_json::Value;
 use sqlx::{Pool, Postgres, Row};
 use std::env;
 use tracing::{info, warn};
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -1,6 +1,6 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use chrono::{Datelike, Utc};
-use futures::{StreamExt, future::pending};
+use futures::{future::pending, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -9,9 +9,9 @@ use sqlx::Row;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::time::{Duration, MissedTickBehavior, interval, sleep};
+use tokio::time::{interval, sleep, Duration, MissedTickBehavior};
 use tokio_postgres::{AsyncMessage, NoTls};
-use url::{Url, form_urlencoded};
+use url::{form_urlencoded, Url};
 
 use i_miss_rust::database_ops::db::Db;
 use i_miss_rust::database_ops::nexarda::provider::{NexardaOptions, NexardaProvider};
@@ -776,6 +776,53 @@ async fn handle_job(db: &Db, job: &IngestJob) -> Result<()> {
             Ok(())
         }
         ("igdb", "catalog") => {
+            struct EnvScope {
+                prev: Vec<(String, Option<String>)>,
+            }
+            impl EnvScope {
+                fn new() -> Self {
+                    Self { prev: Vec::new() }
+                }
+                fn set(&mut self, key: &str, val: &str) {
+                    let prev = std::env::var(key).ok();
+                    self.prev.push((key.to_string(), prev));
+                    _set_env_var(key, val);
+                }
+            }
+            impl Drop for EnvScope {
+                fn drop(&mut self) {
+                    for (key, val) in self.prev.drain(..) {
+                        if let Some(v) = val {
+                            _set_env_var(&key, &v);
+                        } else {
+                            _remove_env_var(&key);
+                        }
+                    }
+                }
+            }
+
+            let mut envs = EnvScope::new();
+            if let Some(args) = &job.args {
+                if let Some(v) = args.get("mode").and_then(|v| v.as_str()) {
+                    envs.set("IGDB_MODE", v);
+                }
+                if let Some(v) = args.get("page_size").and_then(|v| v.as_u64()) {
+                    envs.set("IGDB_PAGE_SIZE", &v.to_string());
+                }
+                if let Some(v) = args.get("max_pages").and_then(|v| v.as_u64()) {
+                    envs.set("IGDB_MAX_PAGES", &v.to_string());
+                }
+                if let Some(v) = args.get("reqs_per_min").and_then(|v| v.as_u64()) {
+                    envs.set("IGDB_REQS_PER_MIN", &v.to_string());
+                }
+                if let Some(v) = args.get("rps").and_then(|v| v.as_f64()) {
+                    envs.set("IGDB_RPS", &format!("{}", v));
+                }
+                if let Some(v) = args.get("concurrency").and_then(|v| v.as_u64()) {
+                    envs.set("IGDB_CONCURRENCY", &v.to_string());
+                }
+            }
+
             i_miss_rust::database_ops::igdb::client::run_from_env(db).await?;
             Ok(())
         }
@@ -900,6 +947,155 @@ async fn handle_job(db: &Db, job: &IngestJob) -> Result<()> {
             );
             Ok(())
         }
+
+        ("tgdb", "catalog")
+        | ("tgdb", "ingest")
+        | ("tgdb", "sync")
+        | ("tgdb", "all")
+        | ("thegamesdb", "catalog")
+        | ("thegamesdb", "ingest")
+        | ("thegamesdb", "sync")
+        | ("thegamesdb", "all") => {
+            // TGDB mirror ingestion (catalogue + media links when schema supports them).
+            // Args (all optional): { api_key, year_min, year_max, page_size, reqs_per_min }
+            struct EnvScope {
+                prev: Vec<(String, Option<String>)>,
+            }
+            impl EnvScope {
+                fn new() -> Self {
+                    Self { prev: Vec::new() }
+                }
+                fn set(&mut self, k: &str, v: &str) {
+                    let p = std::env::var(k).ok();
+                    self.prev.push((k.to_string(), p));
+                    _set_env_var(k, v);
+                }
+            }
+            impl Drop for EnvScope {
+                fn drop(&mut self) {
+                    for (k, v) in self.prev.drain(..) {
+                        if let Some(val) = v {
+                            _set_env_var(&k, &val);
+                        } else {
+                            _remove_env_var(&k);
+                        }
+                    }
+                }
+            }
+
+            let mut api_key = std::env::var("TGDB_API_KEY").ok().filter(|s| !s.is_empty());
+            if let Some(args) = &job.args {
+                let mut envs = EnvScope::new();
+
+                if let Some(v) = args.get("year_min").and_then(|v| v.as_i64()) {
+                    envs.set("TGDB_YEAR_MIN", &v.to_string());
+                }
+                if let Some(v) = args.get("year_max").and_then(|v| v.as_i64()) {
+                    envs.set("TGDB_YEAR_MAX", &v.to_string());
+                }
+                if let Some(v) = args.get("page_size").and_then(|v| v.as_u64()) {
+                    envs.set("TGDB_PAGE_SIZE", &v.to_string());
+                }
+                if let Some(v) = args.get("reqs_per_min").and_then(|v| v.as_u64()) {
+                    envs.set("TGDB_REQS_PER_MIN", &v.to_string());
+                }
+                if let Some(k) = args.get("api_key").and_then(|v| v.as_str()) {
+                    api_key = Some(k.to_string());
+                }
+
+                // Keep env overrides alive for the duration of the async call.
+                // (Drop restores previous values.)
+                let allow_anon = std::env::var("TGDB_ALLOW_ANON")
+                    .ok()
+                    .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+                    .unwrap_or(false);
+
+                if api_key.is_none() && !allow_anon {
+                    println!(
+                        "[ingest_worker] tgdb: skipped (TGDB_API_KEY missing; set TGDB_ALLOW_ANON=1 to attempt anonymous calls)"
+                    );
+                    return Ok(());
+                }
+
+                i_miss_rust::database_ops::tgdb::sync(db, api_key).await?;
+                return Ok(());
+            }
+
+            let allow_anon = std::env::var("TGDB_ALLOW_ANON")
+                .ok()
+                .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+                .unwrap_or(false);
+            if api_key.is_none() && !allow_anon {
+                println!(
+                    "[ingest_worker] tgdb: skipped (TGDB_API_KEY missing; set TGDB_ALLOW_ANON=1 to attempt anonymous calls)"
+                );
+                return Ok(());
+            }
+            i_miss_rust::database_ops::tgdb::sync(db, api_key).await?;
+            Ok(())
+        }
+
+        ("itad", "prices_scan") | ("itad", "sync") | ("itad", "all") => {
+            // ITAD pricing sync (bounded). Args (all optional):
+            // { api_key, base_url, timeout_secs, country, deals_limit, max_game_overviews, default_currency, country_name }
+            struct EnvScope {
+                prev: Vec<(String, Option<String>)>,
+            }
+            impl EnvScope {
+                fn new() -> Self {
+                    Self { prev: Vec::new() }
+                }
+                fn set(&mut self, k: &str, v: &str) {
+                    let p = std::env::var(k).ok();
+                    self.prev.push((k.to_string(), p));
+                    _set_env_var(k, v);
+                }
+            }
+            impl Drop for EnvScope {
+                fn drop(&mut self) {
+                    for (k, v) in self.prev.drain(..) {
+                        if let Some(val) = v {
+                            _set_env_var(&k, &val);
+                        } else {
+                            _remove_env_var(&k);
+                        }
+                    }
+                }
+            }
+
+            let mut api_key = std::env::var("ITAD_API_KEY").ok().filter(|s| !s.is_empty());
+            let mut envs = EnvScope::new();
+
+            if let Some(args) = &job.args {
+                if let Some(k) = args.get("api_key").and_then(|v| v.as_str()) {
+                    api_key = Some(k.to_string());
+                }
+                if let Some(v) = args.get("base_url").and_then(|v| v.as_str()) {
+                    envs.set("ITAD_BASE_URL", v);
+                }
+                if let Some(v) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                    envs.set("ITAD_TIMEOUT_SECS", &v.to_string());
+                }
+                if let Some(v) = args.get("country").and_then(|v| v.as_str()) {
+                    envs.set("ITAD_COUNTRY", v);
+                }
+                if let Some(v) = args.get("deals_limit").and_then(|v| v.as_u64()) {
+                    envs.set("ITAD_DEALS_LIMIT", &v.to_string());
+                }
+                if let Some(v) = args.get("max_game_overviews").and_then(|v| v.as_u64()) {
+                    envs.set("ITAD_MAX_GAME_OVERVIEWS", &v.to_string());
+                }
+                if let Some(v) = args.get("default_currency").and_then(|v| v.as_str()) {
+                    envs.set("ITAD_DEFAULT_CURRENCY", v);
+                }
+                if let Some(v) = args.get("country_name").and_then(|v| v.as_str()) {
+                    envs.set("ITAD_COUNTRY_NAME", v);
+                }
+            }
+
+            let _ = i_miss_rust::database_ops::itad::sync(db, api_key).await?;
+            Ok(())
+        }
         ("rawg", "catalog")
         | ("rawg", "ingest")
         | ("rawg", "sync")
@@ -948,6 +1144,9 @@ async fn handle_job(db: &Db, job: &IngestJob) -> Result<()> {
                 if let Some(v) = args.get("year_max").and_then(|v| v.as_i64()) {
                     year_max = v as i32;
                 }
+                if let Some(v) = args.get("mode").and_then(|v| v.as_str()) {
+                    scope.set("RAWG_MODE", v);
+                }
                 if let Some(k) = args.get("api_key").and_then(|v| v.as_str()) {
                     api_key = Some(k.to_string());
                 }
@@ -969,7 +1168,11 @@ async fn handle_job(db: &Db, job: &IngestJob) -> Result<()> {
                 std::mem::swap(&mut year_min, &mut year_max);
             }
 
-            i_miss_rust::database_ops::rawg::ingest_range(db, api_key, year_min, year_max).await?;
+            // rawg::sync uses env for range bounds, so set them here for consistent behavior.
+            scope.set("RAWG_YEAR_MIN", &year_min.to_string());
+            scope.set("RAWG_YEAR_MAX", &year_max.to_string());
+
+            i_miss_rust::database_ops::rawg::sync(db, api_key).await?;
             Ok(())
         }
         ("giantbomb", "json") | ("giant_bomb", "json") | ("gb", "json") | ("giantbomb", "load") => {
@@ -1231,7 +1434,7 @@ fn start_http_server(
     manager: Manager,
     addr: String,
 ) {
-    use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+    use actix_web::{web, App, HttpResponse, HttpServer, Responder};
     tokio::spawn(async move {
         let db = web::Data::new(db);
         let cfg = web::Data::new(cfg);

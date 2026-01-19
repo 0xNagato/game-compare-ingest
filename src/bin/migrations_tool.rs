@@ -8,7 +8,7 @@
 //! - Verify schema tables (--verify-schema)
 //! Uses simple_query (tokio-postgres) to remain PgBouncer + DO $$ safe.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use i_miss_rust::util::env::{db_url_prefer_session, preflight_check};
 use sha2::{Digest, Sha256};
 use std::fs;

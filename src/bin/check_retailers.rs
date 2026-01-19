@@ -79,9 +79,9 @@ async fn main() -> Result<()> {
              SELECT 1 FROM provider_offers po
              JOIN offers o ON o.id = po.offer_id
              JOIN retailers r ON r.id = o.retailer_id
-             WHERE po.provider_item_id = pi.id
+             WHERE po.video_game_source_id = pi.id
          ) AND EXISTS (
-             SELECT 1 FROM provider_offers po WHERE po.provider_item_id = pi.id
+             SELECT 1 FROM provider_offers po WHERE po.video_game_source_id = pi.id
          )",
     )
     .fetch_one(&pool)

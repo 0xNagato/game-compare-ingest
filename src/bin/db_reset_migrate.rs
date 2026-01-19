@@ -1,8 +1,8 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, migrate::Migrator};
+use sqlx::{migrate::Migrator, PgPool};
 use std::{env, fs, path::Path};
-use tracing::{Level, error, info};
+use tracing::{error, info, Level};
 use tracing_subscriber::EnvFilter;
 
 static MIGRATIONS: Migrator = sqlx::migrate!("./migrations");
@@ -57,6 +57,34 @@ async fn main() -> Result<()> {
 
     info!("step" = "dropping enum types (public)");
     drop_enum_types(&pool).await?;
+
+    // Drop the sqlx migrations table to force fresh migration run
+    info!("step" = "clearing sqlx migration state");
+    // First try to drop the table entirely
+    if let Err(e) = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE;")
+        .execute(&pool)
+        .await
+    {
+        // If drop fails, try to truncate it instead
+        if let Err(e2) = sqlx::query("TRUNCATE TABLE _sqlx_migrations CASCADE;")
+            .execute(&pool)
+            .await
+        {
+            // If both fail, try to delete all rows
+            if let Err(e3) = sqlx::query("DELETE FROM _sqlx_migrations;")
+                .execute(&pool)
+                .await
+            {
+                error!("clear_migrations_table_error" = %e, "truncate_error" = %e2, "delete_error" = %e3);
+            } else {
+                info!("cleared _sqlx_migrations via DELETE");
+            }
+        } else {
+            info!("cleared _sqlx_migrations via TRUNCATE");
+        }
+    } else {
+        info!("dropped _sqlx_migrations table");
+    }
 
     // Clear requested schemas (ext and cg_pngr_tm), then recreate ext
     info!("step" = "dropping schemas ext, cg_pngr_tm (if exist)");

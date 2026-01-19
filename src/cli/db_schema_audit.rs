@@ -74,7 +74,7 @@ pub async fn run(cfg: DbSchemaAuditConfig) -> Result<()> {
         "providers",
         "provider_items",
         "provider_offers",
-        "provider_media_links",
+        "vg_source_media_links",
         "game_media",
         "offers",
         "offer_jurisdictions",

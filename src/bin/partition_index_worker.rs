@@ -6,8 +6,8 @@
 // =========================================================
 
 use anyhow::{Context, Result};
+use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions, PgSslMode};
 use sqlx::Row;
-use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 use std::env;
 use std::str::FromStr;
 use std::time::Duration;
@@ -42,9 +42,14 @@ async fn get_db_pool() -> Result<PgPool> {
         .unwrap_or(5);
 
     // Configure connect options to disable statement cache (avoids prepared stmt name collisions)
-    let connect_options = PgConnectOptions::from_str(&database_url)
+    let mut connect_options = PgConnectOptions::from_str(&database_url)
         .unwrap()
         .statement_cache_capacity(0);
+
+    // Ensure TLS is enabled when DSN contains sslmode=require
+    if database_url.contains("sslmode=require") && !database_url.contains("sslmode=disable") {
+        connect_options = connect_options.ssl_mode(PgSslMode::Require);
+    }
 
     PgPoolOptions::new()
         .max_connections(max_conns)

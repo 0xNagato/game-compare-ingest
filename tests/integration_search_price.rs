@@ -34,7 +34,13 @@ async fn psstore_category_print() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn csv_price_roundtrip_current_price() -> Result<()> {
+    if std::env::var("RUN_DB_TESTS").ok().as_deref() != Some("1") {
+        eprintln!("[csv_price_roundtrip_current_price] skipping (set RUN_DB_TESTS=1 to enable)");
+        return Ok(());
+    }
+
     let db_url = match env::var("SUPABASE_DB_URL").or_else(|_| env::var("DATABASE_URL")) {
         Ok(v) => v,
         Err(_) => {

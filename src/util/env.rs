@@ -112,7 +112,10 @@ pub fn db_url() -> anyhow::Result<String> {
         // address via hostaddr= to avoid rustls DNS name issues.
         if let Some(hostname_url) = env_opt("SUPABASE_DB_URL") {
             if let Some(hybrid) = build_hybrid_ipv6_dsn(&v, &hostname_url) {
-                info!(target = "env", "using IPv6 DSN with hostaddr override + hostname for TLS");
+                info!(
+                    target = "env",
+                    "using IPv6 DSN with hostaddr override + hostname for TLS"
+                );
                 return Ok(hybrid);
             }
         }
@@ -124,14 +127,24 @@ pub fn db_url() -> anyhow::Result<String> {
     // Next: respect explicit preferences to avoid PgBouncer when asked.
     let no_pgbouncer = env_flag("NO_PGBOUNCER", false) || env_flag("IPV6_DIRECT", false);
     if no_pgbouncer || env_flag("PREFER_DIRECT_DB", false) {
-        for k in ["SUPABASE_DB_URL", "SUPABASE_DB_SESSION_URL", "DATABASE_URL"] {
+        for k in [
+            "SUPABASE_DB_URL",
+            "SUPABASE_DB_SESSION_URL",
+            "DATABASE_URL",
+            "DB_URL",
+        ] {
             if let Some(v) = env_opt(k) {
                 return Ok(v);
             }
         }
     } else {
         // Default ordering: session/pooler first, then direct.
-        for k in ["SUPABASE_DB_SESSION_URL", "DATABASE_URL", "SUPABASE_DB_URL"] {
+        for k in [
+            "SUPABASE_DB_SESSION_URL",
+            "DATABASE_URL",
+            "SUPABASE_DB_URL",
+            "DB_URL",
+        ] {
             if let Some(v) = env_opt(k) {
                 return Ok(v);
             }
@@ -186,10 +199,27 @@ fn build_ipv6_dsn_from_components() -> Option<String> {
     let password = env_opt("V6_PASSWORD").or_else(|| env_opt("POSTGRES_PASSWORD"))?;
     let database = env_opt("V6_DATABASE").or_else(|| env_opt("POSTGRES_DB"))?;
     let port = env_opt("V6_PORT").unwrap_or_else(|| "5432".into());
-    let host_part = normalize_ipv6_host(&host);
-    Some(format!(
-        "postgresql://{user}:{password}@{host_part}:{port}/{database}"
-    ))
+
+    // IMPORTANT:
+    // - The password may contain reserved URL characters (e.g. '?' / '!' / '@').
+    // - sqlx / url parsing requires these to be percent-encoded in the DSN.
+    // - Build via `url::Url` so username/password are encoded safely.
+    // - Supabase Postgres requires TLS; default to sslmode=require for composed DSNs.
+    let host_trimmed = host
+        .trim()
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_string();
+    let port_u16: u16 = port.parse::<u16>().unwrap_or(5432);
+
+    let mut out = url::Url::parse("postgresql://localhost").ok()?;
+    out.set_username(&user).ok()?;
+    out.set_password(Some(&password)).ok()?;
+    out.set_host(Some(&host_trimmed)).ok()?;
+    out.set_port(Some(port_u16)).ok()?;
+    out.set_path(&format!("/{database}"));
+    out.query_pairs_mut().append_pair("sslmode", "require");
+
+    Some(out.to_string())
 }
 
 /// Build a DSN that connects via the given IPv6 address (hostaddr) but uses the
@@ -232,21 +262,44 @@ fn normalize_ipv6_host(raw: &str) -> String {
 
 fn redact_value(key: &str, val: &str) -> String {
     let k = key.to_ascii_uppercase();
-    if k.contains("PASSWORD") || k.contains("SECRET") || k.contains("KEY") {
+    if k.contains("PASSWORD")
+        || k.contains("SECRET")
+        || k.contains("KEY")
+        || k.contains("TOKEN")
+        || k.contains("COOKIE")
+    {
         return "***".to_string();
     }
-    if (k.contains("URL") || k.contains("DSN"))
-        && (val.starts_with("postgres://") || val.starts_with("postgresql://"))
-    {
-        if let Some(proto) = val.find("//") {
-            if let Some(at) = val[proto + 2..].find('@') {
-                let host_part = &val[proto + 2 + at + 1..];
-                return format!("{}***:{}", &val[..proto + 2], host_part);
-            }
+
+    // Trim and normalize whitespace so we don't accidentally log credentials
+    // when values contain newlines (e.g., copy/paste env mistakes).
+    let val_trim = val.trim();
+
+    // Always redact postgres DSNs even if the key isn't obviously sensitive
+    // (e.g., SUPABASE_IPV6_DB).
+    if let Ok(mut u) = url::Url::parse(val_trim) {
+        let scheme = u.scheme().to_ascii_lowercase();
+        if scheme == "postgres" || scheme == "postgresql" {
+            let _ = u.set_username("***");
+            let _ = u.set_password(Some("***"));
+            return u.to_string();
         }
-        return "postgres://***".to_string();
     }
-    val.to_string()
+
+    if k.contains("URL") || k.contains("DSN") {
+        // Fallback: best-effort string redaction for postgres URLs.
+        if val_trim.starts_with("postgres://") || val_trim.starts_with("postgresql://") {
+            if let Some(proto) = val_trim.find("//") {
+                if let Some(at) = val_trim[proto + 2..].find('@') {
+                    let host_part = &val_trim[proto + 2 + at + 1..];
+                    return format!("{}***:{}", &val_trim[..proto + 2], host_part);
+                }
+            }
+            return "postgres://***".to_string();
+        }
+    }
+
+    val_trim.to_string()
 }
 
 /// Validate required keys and log a consolidated, redacted snapshot of configuration.

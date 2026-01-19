@@ -35,7 +35,12 @@ WITH rx AS (
   SELECT id FROM providers WHERE slug='xbox'
 )
 INSERT INTO retailer_providers(retailer_id, provider_id, credentials)
-SELECT rx.id, px.id, jsonb_build_object('scope', 'https://displaycatalog.mp.microsoft.com/.default')
+SELECT rx.id, px.id,
+  jsonb_build_object(
+    -- IMPORTANT: Display Catalog calls are to displaycatalog.mp.microsoft.com, but the token
+    -- audience must be `https://onestore.microsoft.com` to authorize pricing/availability.
+    'scope', 'https://onestore.microsoft.com/.default'
+  )
 FROM rx, px
 ON CONFLICT (retailer_id, provider_id) DO NOTHING;
 

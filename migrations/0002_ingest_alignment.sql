@@ -12,9 +12,9 @@ UPDATE public.currencies SET minor_unit = COALESCE(minor_unit, 2);
 DO $$ BEGIN
 IF NOT EXISTS (
   SELECT 1 FROM information_schema.columns
-  WHERE table_schema='public' AND table_name='providers' AND column_name='kind'
+  WHERE table_schema='public' AND table_name='video_game_sources' AND column_name='kind'
 ) THEN
-  ALTER TABLE public.providers ADD COLUMN kind text;
+  ALTER TABLE public.video_game_sources ADD COLUMN kind text;
 END IF; END $$;
 
 -- exchange_rates table (for FX)

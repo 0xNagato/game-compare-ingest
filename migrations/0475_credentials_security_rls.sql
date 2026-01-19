@@ -17,169 +17,229 @@ END $$;
 -- Adjust batch_size per environment before running in production; safe defaults used here.
 
 -- 1.1 providers: backfill is_active, auth_metadata, metadata
+-- NOTE: These columns may not exist yet if added in later migrations. Skip if columns don't exist.
 DO $$
 DECLARE
   batch_size int := 50000;
   min_id bigint;
 BEGIN
-  LOOP
-    SELECT min(id) INTO min_id
-    FROM public.providers
-    WHERE is_active IS NULL OR auth_metadata IS NULL OR metadata IS NULL;
-    EXIT WHEN min_id IS NULL;
+  -- Only run if all three columns exist
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='providers' AND column_name='is_active'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='providers' AND column_name='auth_metadata'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='providers' AND column_name='metadata'
+  ) THEN
+    LOOP
+      SELECT min(id) INTO min_id
+      FROM public.providers
+      WHERE is_active IS NULL OR auth_metadata IS NULL OR metadata IS NULL;
+      EXIT WHEN min_id IS NULL;
 
-    UPDATE public.providers
-      SET is_active   = coalesce(is_active, true),
-          auth_metadata = coalesce(auth_metadata, '{}'::jsonb),
-          metadata    = coalesce(metadata, '{}'::jsonb)
-    WHERE id >= min_id AND id < min_id + batch_size
-      AND (is_active IS NULL OR auth_metadata IS NULL OR metadata IS NULL);
+      UPDATE public.providers
+        SET is_active   = coalesce(is_active, true),
+            auth_metadata = coalesce(auth_metadata, '{}'::jsonb),
+            metadata    = coalesce(metadata, '{}'::jsonb)
+      WHERE id >= min_id AND id < min_id + batch_size
+        AND (is_active IS NULL OR auth_metadata IS NULL OR metadata IS NULL);
 
-    PERFORM pg_sleep(0.05);
-  END LOOP;
+      PERFORM pg_sleep(0.05);
+    END LOOP;
+  END IF;
 END $$;
 
 -- 1.2 retailer_providers: backfill credentials, settings, metadata, jurisdiction_scope, is_enabled, priority
+-- NOTE: Table and columns may not exist yet. Skip if columns don't exist.
 DO $$
 DECLARE
   batch_size int := 20000;
   min_id bigint;
 BEGIN
-  LOOP
-    SELECT min(id) INTO min_id
-    FROM public.retailer_providers
-    WHERE credentials IS NULL OR settings IS NULL OR metadata IS NULL OR jurisdiction_scope IS NULL OR is_enabled IS NULL OR priority IS NULL;
-    EXIT WHEN min_id IS NULL;
+  -- Check if table exists and all required columns exist
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='retailer_providers')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='credentials')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='settings')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='metadata')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='jurisdiction_scope')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='is_enabled')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='priority') THEN
+    LOOP
+      SELECT min(id) INTO min_id
+      FROM public.retailer_providers
+      WHERE credentials IS NULL OR settings IS NULL OR metadata IS NULL OR jurisdiction_scope IS NULL OR is_enabled IS NULL OR priority IS NULL;
+      EXIT WHEN min_id IS NULL;
 
-    UPDATE public.retailer_providers
-      SET credentials        = coalesce(credentials, '{}'::jsonb),
-          settings           = coalesce(settings, '{}'::jsonb),
-          metadata           = coalesce(metadata, '{}'::jsonb),
-          jurisdiction_scope = coalesce(jurisdiction_scope, ARRAY[]::text[]),
-          is_enabled         = coalesce(is_enabled, true),
-          priority           = coalesce(priority, 100)
-    WHERE id >= min_id AND id < min_id + batch_size
-      AND (credentials IS NULL OR settings IS NULL OR metadata IS NULL OR jurisdiction_scope IS NULL OR is_enabled IS NULL OR priority IS NULL);
+      UPDATE public.retailer_providers
+        SET credentials        = coalesce(credentials, '{}'::jsonb),
+            settings           = coalesce(settings, '{}'::jsonb),
+            metadata           = coalesce(metadata, '{}'::jsonb),
+            jurisdiction_scope = coalesce(jurisdiction_scope, ARRAY[]::text[]),
+            is_enabled         = coalesce(is_enabled, true),
+            priority           = coalesce(priority, 100)
+      WHERE id >= min_id AND id < min_id + batch_size
+        AND (credentials IS NULL OR settings IS NULL OR metadata IS NULL OR jurisdiction_scope IS NULL OR is_enabled IS NULL OR priority IS NULL);
 
-    PERFORM pg_sleep(0.05);
-  END LOOP;
+      PERFORM pg_sleep(0.05);
+    END LOOP;
+  END IF;
 END $$;
 
 -- 1.3 provider_items: backfill attributes
+-- NOTE: Table and column may not exist yet. Skip if column doesn't exist.
 DO $$
 DECLARE
   batch_size int := 50000;
   min_id bigint;
 BEGIN
-  LOOP
-    SELECT min(id) INTO min_id
-    FROM public.provider_items
-    WHERE attributes IS NULL;
-    EXIT WHEN min_id IS NULL;
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='provider_items')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_items' AND column_name='attributes') THEN
+    LOOP
+      SELECT min(id) INTO min_id
+      FROM public.provider_items
+      WHERE attributes IS NULL;
+      EXIT WHEN min_id IS NULL;
 
-    UPDATE public.provider_items
-      SET attributes = '{}'::jsonb
-    WHERE id >= min_id AND id < min_id + batch_size
-      AND attributes IS NULL;
+      UPDATE public.provider_items
+        SET attributes = '{}'::jsonb
+      WHERE id >= min_id AND id < min_id + batch_size
+        AND attributes IS NULL;
 
-    PERFORM pg_sleep(0.05);
-  END LOOP;
+      PERFORM pg_sleep(0.05);
+    END LOOP;
+  END IF;
 END $$;
 
 -- 1.4 provider_offers: backfill is_active
+-- NOTE: Table and column may not exist yet. Skip if column doesn't exist.
 DO $$
 DECLARE
   batch_size int := 50000;
   min_id bigint;
 BEGIN
-  LOOP
-    SELECT min(id) INTO min_id FROM public.provider_offers WHERE is_active IS NULL;
-    EXIT WHEN min_id IS NULL;
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='provider_offers')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_offers' AND column_name='is_active') THEN
+    LOOP
+      SELECT min(id) INTO min_id FROM public.provider_offers WHERE is_active IS NULL;
+      EXIT WHEN min_id IS NULL;
 
-    UPDATE public.provider_offers
-      SET is_active = true
-    WHERE id >= min_id AND id < min_id + batch_size AND is_active IS NULL;
+      UPDATE public.provider_offers
+        SET is_active = true
+      WHERE id >= min_id AND id < min_id + batch_size AND is_active IS NULL;
 
-    PERFORM pg_sleep(0.02);
-  END LOOP;
+      PERFORM pg_sleep(0.02);
+    END LOOP;
+  END IF;
 END $$;
 
 -- 1.5 provider_ingest_runs: backfill meta, stats, errors, items_processed, prices_written
+-- NOTE: Table and columns may not exist yet. Skip if columns don't exist.
 DO $$
 DECLARE
   batch_size int := 50000;
   min_id bigint;
 BEGIN
-  LOOP
-    SELECT min(id) INTO min_id
-    FROM public.provider_ingest_runs
-    WHERE meta IS NULL OR stats IS NULL OR errors IS NULL OR items_processed IS NULL OR prices_written IS NULL;
-    EXIT WHEN min_id IS NULL;
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='provider_ingest_runs')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_ingest_runs' AND column_name='meta')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_ingest_runs' AND column_name='stats')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_ingest_runs' AND column_name='errors')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_ingest_runs' AND column_name='items_processed')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_ingest_runs' AND column_name='prices_written') THEN
+    LOOP
+      SELECT min(id) INTO min_id
+      FROM public.provider_ingest_runs
+      WHERE meta IS NULL OR stats IS NULL OR errors IS NULL OR items_processed IS NULL OR prices_written IS NULL;
+      EXIT WHEN min_id IS NULL;
 
-    UPDATE public.provider_ingest_runs
-      SET meta            = coalesce(meta, '{}'::jsonb),
-          stats           = coalesce(stats, '{}'::jsonb),
-          errors          = coalesce(errors, '{}'::jsonb),
-          items_processed = coalesce(items_processed, 0),
-          prices_written  = coalesce(prices_written, 0)
-    WHERE id >= min_id AND id < min_id + batch_size
-      AND (meta IS NULL OR stats IS NULL OR errors IS NULL OR items_processed IS NULL OR prices_written IS NULL);
+      UPDATE public.provider_ingest_runs
+        SET meta            = coalesce(meta, '{}'::jsonb),
+            stats           = coalesce(stats, '{}'::jsonb),
+            errors          = coalesce(errors, '{}'::jsonb),
+            items_processed = coalesce(items_processed, 0),
+            prices_written  = coalesce(prices_written, 0)
+      WHERE id >= min_id AND id < min_id + batch_size
+        AND (meta IS NULL OR stats IS NULL OR errors IS NULL OR items_processed IS NULL OR prices_written IS NULL);
 
-    PERFORM pg_sleep(0.05);
-  END LOOP;
+      PERFORM pg_sleep(0.05);
+    END LOOP;
+  END IF;
 END $$;
 
 -- 1.6 provider_sync_states: backfill sync_details
+-- NOTE: Table and column may not exist yet. Skip if column doesn't exist.
 DO $$
 DECLARE
   batch_size int := 20000;
   min_id bigint;
 BEGIN
-  LOOP
-    SELECT min(id) INTO min_id FROM public.provider_sync_states WHERE sync_details IS NULL;
-    EXIT WHEN min_id IS NULL;
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='provider_sync_states')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='provider_sync_states' AND column_name='sync_details') THEN
+    LOOP
+      SELECT min(id) INTO min_id FROM public.provider_sync_states WHERE sync_details IS NULL;
+      EXIT WHEN min_id IS NULL;
 
-    UPDATE public.provider_sync_states
-      SET sync_details = '{}'::jsonb
-    WHERE id >= min_id AND id < min_id + batch_size AND sync_details IS NULL;
+      UPDATE public.provider_sync_states
+        SET sync_details = '{}'::jsonb
+      WHERE id >= min_id AND id < min_id + batch_size AND sync_details IS NULL;
 
-    PERFORM pg_sleep(0.02);
-  END LOOP;
+      PERFORM pg_sleep(0.02);
+    END LOOP;
+  END IF;
 END $$;
 
 -- ====== 2. Encryption placeholder and migration notes ======
 -- Add an encrypted column credentials_enc; application should backfill using a secret key outside SQL.
-ALTER TABLE public.retailer_providers
-  ADD COLUMN IF NOT EXISTS credentials_enc bytea;
+-- NOTE: Table may not exist yet. Skip if table doesn't exist.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='retailer_providers') THEN
+    ALTER TABLE public.retailer_providers
+      ADD COLUMN IF NOT EXISTS credentials_enc bytea;
 
-COMMENT ON COLUMN public.retailer_providers.credentials_enc IS
-  'Encrypted credentials (pgp_sym_encrypt). Backfill via application; do NOT store keys in SQL.';
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='credentials_enc'
+    ) THEN
+      COMMENT ON COLUMN public.retailer_providers.credentials_enc IS
+        'Encrypted credentials (pgp_sym_encrypt). Backfill via application; do NOT store keys in SQL.';
+    END IF;
+  END IF;
+END $$;
 
 -- ====== 3. Safe view + guarded grants (hide credentials from authenticated) ======
-CREATE OR REPLACE VIEW public.retailer_providers_safe AS
-SELECT id, retailer_id, provider_id, settings, jurisdiction_scope, last_synced_at, next_sync_at,
-       sync_status, sync_cursor, sync_error, rate_limit_per_minute, rate_limit_burst,
-       metadata, is_enabled, priority
-FROM public.retailer_providers;
+-- NOTE: Table and columns may not exist yet. Skip if columns don't exist.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='retailer_providers')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='settings')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='jurisdiction_scope')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='metadata')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='is_enabled')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='priority') THEN
+    -- Create safe view
+    CREATE OR REPLACE VIEW public.retailer_providers_safe AS
+    SELECT id, retailer_id, provider_id, settings, jurisdiction_scope, last_synced_at, next_sync_at,
+           sync_status, sync_cursor, sync_error, rate_limit_per_minute, rate_limit_burst,
+           metadata, is_enabled, priority
+    FROM public.retailer_providers;
 
--- Grant SELECT on the safe view to authenticated role (if role exists)
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    EXECUTE 'GRANT SELECT ON public.retailer_providers_safe TO authenticated';
+    -- Grant SELECT on the safe view to authenticated role (if role exists)
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE 'GRANT SELECT ON public.retailer_providers_safe TO authenticated';
+    END IF;
+
+    -- Revoke direct SELECT on base table from authenticated (guarded)
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+      EXECUTE 'REVOKE SELECT ON public.retailer_providers FROM authenticated';
+    END IF;
+
+    -- Enable RLS
+    ALTER TABLE public.retailer_providers ENABLE ROW LEVEL SECURITY;
   END IF;
 END $$;
 
--- Revoke direct SELECT on base table from authenticated (guarded)
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    EXECUTE 'REVOKE SELECT ON public.retailer_providers FROM authenticated';
-  END IF;
-END $$;
-
--- ====== 4. RLS setup and helper function ======
-ALTER TABLE public.retailer_providers ENABLE ROW LEVEL SECURITY;
+-- ====== 4. RLS helper function ======
 
 -- Define function without dynamic EXECUTE to avoid parser issues under custom runner.
 -- The function itself checks for the presence of retailer_users at execution time.
@@ -203,30 +263,36 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.is_retailer_member(bigint) FROM PUBLIC;
 
 -- Recreate policies idempotently (no dynamic EXECUTE; split write-deny into separate actions)
-DROP POLICY IF EXISTS retailer_providers_select_for_members ON public.retailer_providers;
-CREATE POLICY retailer_providers_select_for_members
-  ON public.retailer_providers
-  FOR SELECT TO authenticated
-  USING ( is_enabled = true AND public.is_retailer_member(retailer_id) );
+-- NOTE: Table and is_enabled column may not exist yet. Skip if column doesn't exist.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='retailer_providers')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='retailer_providers' AND column_name='is_enabled') THEN
+    DROP POLICY IF EXISTS retailer_providers_select_for_members ON public.retailer_providers;
+    CREATE POLICY retailer_providers_select_for_members
+      ON public.retailer_providers
+      FOR SELECT TO authenticated
+      USING ( is_enabled = true AND public.is_retailer_member(retailer_id) );
 
-DROP POLICY IF EXISTS retailer_providers_no_insert_for_authenticated ON public.retailer_providers;
-CREATE POLICY retailer_providers_no_insert_for_authenticated
-  ON public.retailer_providers
-  FOR INSERT TO authenticated
-  WITH CHECK (false);
+    DROP POLICY IF EXISTS retailer_providers_no_insert_for_authenticated ON public.retailer_providers;
+    CREATE POLICY retailer_providers_no_insert_for_authenticated
+      ON public.retailer_providers
+      FOR INSERT TO authenticated
+      WITH CHECK (false);
 
-DROP POLICY IF EXISTS retailer_providers_no_update_for_authenticated ON public.retailer_providers;
-CREATE POLICY retailer_providers_no_update_for_authenticated
-  ON public.retailer_providers
-  FOR UPDATE TO authenticated
-  USING (false)
-  WITH CHECK (false);
+    DROP POLICY IF EXISTS retailer_providers_no_update_for_authenticated ON public.retailer_providers;
+    CREATE POLICY retailer_providers_no_update_for_authenticated
+      ON public.retailer_providers
+      FOR UPDATE TO authenticated
+      USING (false)
+      WITH CHECK (false);
 
-DROP POLICY IF EXISTS retailer_providers_no_delete_for_authenticated ON public.retailer_providers;
-CREATE POLICY retailer_providers_no_delete_for_authenticated
-  ON public.retailer_providers
-  FOR DELETE TO authenticated
-  USING (false);
+    DROP POLICY IF EXISTS retailer_providers_no_delete_for_authenticated ON public.retailer_providers;
+    CREATE POLICY retailer_providers_no_delete_for_authenticated
+      ON public.retailer_providers
+      FOR DELETE TO authenticated
+      USING (false);
+  END IF;
+END $$;
 
 -- ====== 5. Credential update helper (SECURITY DEFINER) ======
 DO $$ BEGIN

@@ -15,13 +15,15 @@ END $$;
 
 -- Ensure we never set both columns at once and that the column used matches kind
 DO $$ BEGIN
-  ALTER TABLE public.game_media
-    ADD CONSTRAINT game_media_kind_legacy_chk
-    CHECK (
-      (legacy_image_id IS NULL OR kind = 'image') AND
-      (legacy_video_id IS NULL OR kind = 'video') AND
-      NOT (legacy_image_id IS NOT NULL AND legacy_video_id IS NOT NULL)
-    );
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='game_media') THEN
+    ALTER TABLE public.game_media
+      ADD CONSTRAINT game_media_kind_legacy_chk
+      CHECK (
+        (legacy_image_id IS NULL OR kind = 'image') AND
+        (legacy_video_id IS NULL OR kind = 'video') AND
+        NOT (legacy_image_id IS NOT NULL AND legacy_video_id IS NOT NULL)
+      );
+  END IF;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -52,10 +54,18 @@ WHEN duplicate_object THEN NULL;
 END $$;
 
 -- Keep lookups + uniqueness inexpensive with partial uniques.
-CREATE UNIQUE INDEX IF NOT EXISTS game_media_legacy_image_uidx
-  ON public.game_media(legacy_image_id)
-  WHERE legacy_image_id IS NOT NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='game_media') THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS game_media_legacy_image_uidx
+      ON public.game_media(legacy_image_id)
+      WHERE legacy_image_id IS NOT NULL;
+  END IF;
+END $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS game_media_legacy_video_uidx
-  ON public.game_media(legacy_video_id)
-  WHERE legacy_video_id IS NOT NULL;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='game_media') THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS game_media_legacy_video_uidx
+      ON public.game_media(legacy_video_id)
+      WHERE legacy_video_id IS NOT NULL;
+  END IF;
+END $$;

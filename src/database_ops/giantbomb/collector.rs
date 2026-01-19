@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use futures::future::join_all;
-use indexmap::IndexMap;
 use indexmap::map::Entry;
+use indexmap::IndexMap;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{

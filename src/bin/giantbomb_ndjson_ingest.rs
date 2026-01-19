@@ -12,7 +12,7 @@
 //! This avoids per-row ensure_* round trips and favors set-oriented SQL with ON CONFLICT.
 //! For extreme dataset sizes, replace in-memory Vec with an on-disk staging table (COPY then SQL joins).
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use chrono::NaiveDate;
 use i_miss_rust::database_ops::db::Db;
 use i_miss_rust::util::env;
@@ -380,8 +380,9 @@ async fn bulk_upsert_products_and_software(
         .unwrap_or(1000);
     let mut map: HashMap<String, i64> = HashMap::new();
     for chunk in unique.chunks(batch_size) {
-        let mut qb =
-            QueryBuilder::<sqlx::Postgres>::new("WITH incoming(slug,name,category) AS (VALUES ");
+        let mut qb = QueryBuilder::<sqlx::Postgres>::new(
+            "WITH incoming(slug,name,platform,category) AS (VALUES ",
+        );
         let mut first = true;
         for rec in chunk {
             let slug = simple_slug(&rec.name);
@@ -395,11 +396,14 @@ async fn bulk_upsert_products_and_software(
                 .push(", ")
                 .push_bind(rec.name.clone())
                 .push(", ")
-                .push_bind(&"software")
+                // Laravel schema requires products.platform (NOT NULL). GB is catalog-only: use a safe default.
+                .push_bind("unknown")
+                .push(", ")
+                .push_bind("software")
                 .push(")");
         }
         qb.push(
-            ") INSERT INTO products(slug,name,category) SELECT slug,name,category FROM incoming ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name, updated_at=now() RETURNING id, slug"
+            ") INSERT INTO products(slug,name,platform,category) SELECT slug,name,platform,category FROM incoming ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name, updated_at=now() RETURNING id, slug"
         );
         let rows = qb.build().fetch_all(&db.pool).await?;
         for r in rows {

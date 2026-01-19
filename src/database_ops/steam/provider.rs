@@ -1,18 +1,18 @@
 use crate::currency_for_country;
 use crate::database_ops::db::{Db, PriceRow};
 use crate::database_ops::ingest_providers::{
-    PostIngestSummary, ProviderEntityCache, ensure_country, ensure_currency,
-    ensure_national_jurisdiction, ensure_platform, ensure_provider,
-    ensure_provider_media_links_with_meta, ensure_retailer, ingest_prices, link_provider_offer,
-    upsert_game_media,
+    ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_platform,
+    ensure_provider, ensure_retailer, ensure_vg_source_media_links_with_meta, ingest_prices,
+    link_provider_offer, update_video_game_display_title_and_region, upsert_game_media,
+    PostIngestSummary, ProviderEntityCache,
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
-use futures::{StreamExt, stream::FuturesUnordered};
+use futures::{stream::FuturesUnordered, StreamExt};
 use rayon::prelude::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
     fmt, fs,
@@ -20,6 +20,8 @@ use std::{
 };
 use tokio::sync::Semaphore;
 use tracing::{info, warn};
+
+const STEAM_PROVIDER_KEY: &str = "steam-store";
 
 #[derive(Debug, Deserialize)]
 struct AppListResp {
@@ -235,9 +237,17 @@ fn extract_best_bundle_price(groups: Option<Vec<PackageGroup>>) -> Option<Bundle
                 let discounted = sub.price_in_cents_with_discount;
                 let base = sub.price_in_cents;
                 let final_minor = if let Some(d) = discounted {
-                    if d > 0 { Some(d) } else { None }
+                    if d > 0 {
+                        Some(d)
+                    } else {
+                        None
+                    }
                 } else if let Some(b) = base {
-                    if b > 0 { Some(b) } else { None }
+                    if b > 0 {
+                        Some(b)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 };
@@ -569,7 +579,13 @@ impl SteamProvider {
             .build()
             .unwrap_or_else(|_| Client::new());
 
-        let provider_id = ensure_provider(db, "steam", "storefront", Some("steam-store")).await?;
+        let provider_id = ensure_provider(
+            db,
+            "steam",
+            "storefront",
+            Some(STEAM_PROVIDER_KEY),
+        )
+        .await?;
         let retailer_id = ensure_retailer(db, "Steam", Some("steam")).await?;
         let platform_id = ensure_platform(db, "PC", Some("pc")).await?;
         let mut entity_cache = ProviderEntityCache::new(db.clone());
@@ -604,7 +620,7 @@ impl SteamProvider {
             info!(
                 provider_id,
                 price_rows = backfill_summary.total_price_rows_written,
-                provider_items = backfill_summary.provider_item_ids.len(),
+                provider_items = backfill_summary.video_game_source_ids.len(),
                 "steam backfill verification complete"
             );
             return Ok(());
@@ -747,8 +763,15 @@ impl SteamProvider {
                             let title_id = entity_cache
                                 .ensure_video_game_title(product_id, &name, Some(&slug))
                                 .await?;
+                            // Laravel schema: use product_id directly
                             let vg_id = entity_cache
-                                .ensure_video_game(title_id, platform_id, None)
+                                .ensure_video_game_for_product_laravel(
+                                    product_id,
+                                    &name,
+                                    Some(&slug),
+                                    None,
+                                    STEAM_PROVIDER_KEY,
+                                )
                                 .await?;
                             let sellable_id =
                                 entity_cache.ensure_sellable("software", product_id).await?;
@@ -758,11 +781,12 @@ impl SteamProvider {
                             let oj_id = entity_cache
                                 .ensure_offer_jurisdiction(offer_id, juris_id, currency_id)
                                 .await?;
-                            let provider_item_id = entity_cache
+                            let video_game_source_id = entity_cache
                                 .ensure_provider_item(provider_id, &id, None, false)
                                 .await?;
-                            post_summary.record_provider_item(provider_item_id);
-                            link_provider_offer(db, provider_item_id, offer_id, Some(0.5)).await?;
+                            post_summary.record_provider_item(video_game_source_id);
+                            link_provider_offer(db, video_game_source_id, offer_id, Some(0.5))
+                                .await?;
                             let bundle_price = details
                                 .data
                                 .as_ref()
@@ -772,7 +796,7 @@ impl SteamProvider {
                                     if f > 0 {
                                         price_rows.push(PriceRow {
                                             offer_jurisdiction_id: oj_id,
-                                            provider_item_id: Some(provider_item_id),
+                                            video_game_source_id: Some(video_game_source_id),
                                             recorded_at: Utc::now(),
                                             amount_minor: f,
                                             tax_inclusive: true,
@@ -788,7 +812,7 @@ impl SteamProvider {
                                     if init > fin {
                                         price_rows.push(PriceRow {
                                             offer_jurisdiction_id: oj_id,
-                                            provider_item_id: Some(provider_item_id),
+                                            video_game_source_id: Some(video_game_source_id),
                                             recorded_at: Utc::now(),
                                             amount_minor: init,
                                             tax_inclusive: true,
@@ -813,7 +837,7 @@ impl SteamProvider {
                                     });
                                     let final_row = PriceRow {
                                         offer_jurisdiction_id: oj_id,
-                                        provider_item_id: Some(provider_item_id),
+                                        video_game_source_id: Some(video_game_source_id),
                                         recorded_at: Utc::now(),
                                         amount_minor: bundle.final_minor,
                                         tax_inclusive: true,
@@ -843,7 +867,7 @@ impl SteamProvider {
                                             });
                                             let base_row = PriceRow {
                                                 offer_jurisdiction_id: oj_id,
-                                                provider_item_id: Some(provider_item_id),
+                                                video_game_source_id: Some(video_game_source_id),
                                                 recorded_at: Utc::now(),
                                                 amount_minor: base_minor,
                                                 tax_inclusive: true,
@@ -979,9 +1003,9 @@ impl SteamProvider {
                                             "language": media_language.as_str(),
                                             "scope": media_scope.to_string(),
                                         });
-                                        let _ = ensure_provider_media_links_with_meta(
+                                        let _ = ensure_vg_source_media_links_with_meta(
                                             db,
-                                            provider_item_id,
+                                            video_game_source_id,
                                             Some(vg_id),
                                             &tuples,
                                             "steam",
@@ -1015,15 +1039,9 @@ impl SteamProvider {
                                 }
                             }
                             // Ensure display_title and aggregate region_codes
-                            let _ = sqlx
-                                ::query(
-                                    "UPDATE video_games SET display_title = COALESCE(display_title,$1), region_codes = CASE WHEN region_codes IS NULL THEN ARRAY[$2]::text[] ELSE (SELECT ARRAY(SELECT DISTINCT UNNEST(region_codes || ARRAY[$2]))) END WHERE id=$3"
-                                )
-                                .persistent(false)
-                                .bind(&name)
-                                .bind(cc.to_ascii_uppercase())
-                                .bind(vg_id)
-                                .execute(&db.pool).await;
+                            let _ =
+                                update_video_game_display_title_and_region(db, vg_id, &name, &cc)
+                                    .await;
                             processed_apps += 1;
                             if processed_apps % 25 == 0 {
                                 info!(country = %cc, processed_apps, total_apps=app_ids.len(), region_price_rows, elapsed_secs = (Utc::now()-region_start).num_seconds(), "region progress");
@@ -1061,7 +1079,7 @@ impl SteamProvider {
         info!(
             provider_id,
             price_rows = post_summary.total_price_rows_written,
-            provider_items = post_summary.provider_item_ids.len(),
+            provider_items = post_summary.video_game_source_ids.len(),
             offer_jurisdictions = post_summary.offer_jurisdiction_ids.len(),
             "steam provider multi-region ingest complete"
         );
@@ -1229,7 +1247,7 @@ async fn load_steam_regions_from_db(db: &Db) -> Result<Vec<(String, String)>> {
 /// - STEAM_REGIONS: "US:USD,GB:GBP,..." to restrict/override regions
 /// - STEAM_MAX_CONCURRENCY: limit parallel requests (default 16)
 pub async fn print_all_region_prices_for_app(appid: &str) -> Result<()> {
-    use futures::{StreamExt, stream::FuturesUnordered};
+    use futures::{stream::FuturesUnordered, StreamExt};
     use tokio::sync::Semaphore;
     #[derive(Debug, Clone, Default, Serialize)]
     struct RegionPrice {
@@ -1333,9 +1351,9 @@ async fn run_backfill(
     use sqlx::Row;
     // Missing recent prices per OJ
     let q = r#"
-    SELECT pi.id AS provider_item_id, pi.external_id, oj.id AS offer_jurisdiction_id, c.code2 AS country_code, cur.code AS currency_code
+    SELECT pi.id AS video_game_source_id, pi.external_id, oj.id AS offer_jurisdiction_id, c.code2 AS country_code, cur.code AS currency_code
         FROM public.provider_items pi
-        JOIN public.provider_offers pof ON pof.provider_item_id = pi.id
+        JOIN public.provider_offers pof ON pof.video_game_source_id = pi.id
         JOIN public.offers o ON o.id = pof.offer_id
         JOIN public.offer_jurisdictions oj ON oj.offer_id = o.id
         JOIN public.jurisdictions j ON j.id = oj.jurisdiction_id
@@ -1381,8 +1399,8 @@ async fn run_backfill(
         let cc: String = r.get::<String, _>("country_code");
         // Ensure offer & provider mapping (idempotent)
         // We can locate offer via OJ id, but to keep path consistent we'll re-ensure using mapping
-        let provider_item_id: i64 = r.get("provider_item_id");
-        post_summary.record_provider_item(provider_item_id);
+        let video_game_source_id: i64 = r.get("video_game_source_id");
+        post_summary.record_provider_item(video_game_source_id);
         let oj_id: i64 = r.get("offer_jurisdiction_id");
         // Fetch appdetails for that region
         let permit = sem.clone().acquire_owned().await.unwrap();
@@ -1406,7 +1424,7 @@ async fn run_backfill(
                                 if f > 0 {
                                     price_rows.push(PriceRow {
                                         offer_jurisdiction_id: oj_id,
-                                        provider_item_id: Some(provider_item_id),
+                                        video_game_source_id: Some(video_game_source_id),
                                         recorded_at: Utc::now(),
                                         amount_minor: f,
                                         tax_inclusive: true,
@@ -1420,7 +1438,7 @@ async fn run_backfill(
                                 if init > fin {
                                     price_rows.push(PriceRow {
                                         offer_jurisdiction_id: oj_id,
-                                        provider_item_id: Some(provider_item_id),
+                                        video_game_source_id: Some(video_game_source_id),
                                         recorded_at: Utc::now(),
                                         amount_minor: init,
                                         tax_inclusive: true,
@@ -1444,7 +1462,7 @@ async fn run_backfill(
                                 });
                                 let final_row = PriceRow {
                                     offer_jurisdiction_id: oj_id,
-                                    provider_item_id: Some(provider_item_id),
+                                    video_game_source_id: Some(video_game_source_id),
                                     recorded_at: Utc::now(),
                                     amount_minor: bundle.final_minor,
                                     tax_inclusive: true,
@@ -1472,7 +1490,7 @@ async fn run_backfill(
                                         });
                                         let base_row = PriceRow {
                                             offer_jurisdiction_id: oj_id,
-                                            provider_item_id: Some(provider_item_id),
+                                            video_game_source_id: Some(video_game_source_id),
                                             recorded_at: Utc::now(),
                                             amount_minor: base_minor,
                                             tax_inclusive: true,
@@ -1516,9 +1534,9 @@ async fn run_backfill(
             .map(|s| normalize_language(&s))
             .unwrap_or_else(|| normalize_language("english"));
         let q2 = r#"
-            SELECT pi.id AS provider_item_id, pi.external_id
+            SELECT pi.id AS video_game_source_id, pi.external_id
             FROM public.provider_items pi
-            LEFT JOIN public.provider_media_links ml ON ml.provider_item_id = pi.id
+            LEFT JOIN public.provider_media_links ml ON ml.video_game_source_id = pi.id
             WHERE pi.provider_id = $1
             GROUP BY pi.id, pi.external_item_id
             HAVING COUNT(ml.id) = 0
@@ -1529,7 +1547,7 @@ async fn run_backfill(
             .fetch_all(&db.pool)
             .await?;
         for r in items {
-            let pid: i64 = r.get("provider_item_id");
+            let pid: i64 = r.get("video_game_source_id");
             post_summary.record_provider_item(pid);
             let appid: String = r.get("external_id");
             // Use default region for media
@@ -1559,7 +1577,7 @@ async fn run_backfill(
                         "scope": "backfill",
                         "backfill": true,
                     });
-                    let _ = ensure_provider_media_links_with_meta(
+                    let _ = ensure_vg_source_media_links_with_meta(
                         db,
                         pid,
                         None,
@@ -1572,7 +1590,7 @@ async fn run_backfill(
                     if
                         let Ok(Some(vg_row)) = sqlx
                             ::query(
-                                "SELECT vg.id AS vg_id FROM provider_items pi JOIN provider_offers pof ON pof.provider_item_id=pi.id JOIN offers o ON o.id=pof.offer_id JOIN sellables s ON s.id=o.sellable_id JOIN products p ON p.id=s.product_id JOIN video_game_titles vgt ON vgt.video_game_id=p.id JOIN video_games vg ON vg.title_id=vgt.id WHERE pi.id=$1 LIMIT 1"
+                                "SELECT vg.id AS vg_id FROM provider_items pi JOIN provider_offers pof ON pof.video_game_source_id=pi.id JOIN offers o ON o.id=pof.offer_id JOIN sellables s ON s.id=o.sellable_id JOIN products p ON p.id=s.product_id JOIN video_game_titles vgt ON vgt.video_game_id=p.id JOIN video_games vg ON vg.title_id=vgt.id WHERE pi.id=$1 LIMIT 1"
                             )
                             .persistent(false)
                             .bind(pid)
@@ -1608,7 +1626,7 @@ async fn run_backfill(
     info!(
         provider_id,
         price_rows = post_summary.total_price_rows_written,
-        provider_items = post_summary.provider_item_ids.len(),
+        provider_items = post_summary.video_game_source_ids.len(),
         offer_jurisdictions = post_summary.offer_jurisdiction_ids.len(),
         "steam backfill complete"
     );

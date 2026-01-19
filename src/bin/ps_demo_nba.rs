@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use futures::{StreamExt, stream};
+use futures::{stream, StreamExt};
 use rayon::prelude::*; // for optional parallel post-processing
 use serde_json::json;
 use sqlx::Row;
@@ -11,8 +11,9 @@ use i_miss_rust::database_ops::exchange::ExchangeService;
 use i_miss_rust::database_ops::ingest_providers::{
     ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_offer,
     ensure_offer_jurisdiction, ensure_platform, ensure_product_named, ensure_provider,
-    ensure_provider_item, ensure_provider_media_links_with_meta, ensure_retailer, ensure_sellable,
-    ensure_software_row, ensure_video_game, ensure_video_game_title, link_provider_offer,
+    ensure_provider_item, ensure_retailer, ensure_sellable, ensure_software_row,
+    ensure_vg_source_media_links_with_meta, ensure_video_game, ensure_video_game_title,
+    link_provider_offer,
 };
 use i_miss_rust::database_ops::media_map::MediaMap;
 use psstore_client::{PsConfig, PsProductSummary, PsStoreClient};
@@ -280,14 +281,15 @@ async fn main() -> Result<()> {
         MediaMap::from_file("merged_final.json", Some(10000)).unwrap_or_else(|_| MediaMap::empty());
     let mut inserted_media = 0usize;
     let mut price_rows: Vec<PriceRow> = Vec::new();
-    let mut linked_provider_item_id: Option<i64> = None;
+    let mut linked_video_game_source_id: Option<i64> = None;
 
     for r in &results {
         if let Some(prod) = &r.product {
             if let Some(ext_id) = &prod.product_id {
-                let provider_item_id = ensure_provider_item(&db, provider_id, ext_id, None).await?;
-                link_provider_offer(&db, provider_item_id, offer_id, Some(0.9)).await?;
-                linked_provider_item_id = Some(provider_item_id);
+                let video_game_source_id =
+                    ensure_provider_item(&db, provider_id, ext_id, None).await?;
+                link_provider_offer(&db, video_game_source_id, offer_id, Some(0.9)).await?;
+                linked_video_game_source_id = Some(video_game_source_id);
                 // Print all media links for this locale before dedupe insertion
                 let img_count = prod.media_image_urls.len();
                 let vid_count = prod.media_video_urls.len();
@@ -359,9 +361,9 @@ async fn main() -> Result<()> {
                                 (u.clone(), media_type, role, title)
                             })
                             .collect();
-                    inserted_media += ensure_provider_media_links_with_meta(
+                    inserted_media += ensure_vg_source_media_links_with_meta(
                         &db,
-                        provider_item_id,
+                        video_game_source_id,
                         Some(vg_ps5),
                         &structured,
                         "psstore",
@@ -390,7 +392,7 @@ async fn main() -> Result<()> {
                 if let Some(base) = prod.base_price_minor {
                     price_rows.push(PriceRow {
                         offer_jurisdiction_id: oj_id,
-                        provider_item_id: Some(provider_item_id),
+                        video_game_source_id: Some(video_game_source_id),
                         recorded_at: now,
                         amount_minor: base,
                         tax_inclusive: true,
@@ -402,7 +404,7 @@ async fn main() -> Result<()> {
                 if let Some(discount) = prod.discounted_price_minor {
                     price_rows.push(PriceRow {
                         offer_jurisdiction_id: oj_id,
-                        provider_item_id: Some(provider_item_id),
+                        video_game_source_id: Some(video_game_source_id),
                         recorded_at: now,
                         amount_minor: discount,
                         tax_inclusive: true,
@@ -413,7 +415,7 @@ async fn main() -> Result<()> {
                 }
                 // Persist video URLs into game_videos (idempotent per (video_game_id,url))
                 for vurl in &prod.media_video_urls {
-                    let _ = ensure_game_video(&db, vg_ps5, provider_item_id, vurl).await?;
+                    let _ = ensure_game_video(&db, vg_ps5, video_game_source_id, vurl).await?;
                 }
             }
         }
@@ -466,15 +468,15 @@ async fn main() -> Result<()> {
 
     if results.iter().all(|r| r.product.is_none()) {
         println!("[ps_demo_nba] No locales matched product; fallback synthetic path");
-        let provider_item_id = ensure_provider_item(
+        let video_game_source_id = ensure_provider_item(
             &db,
             provider_id,
             "psstore:nba-2k26",
             Some(json!({"source":"fallback"})),
         )
         .await?;
-        link_provider_offer(&db, provider_item_id, offer_id, Some(0.8)).await?;
-        linked_provider_item_id = Some(provider_item_id);
+        link_provider_offer(&db, video_game_source_id, offer_id, Some(0.8)).await?;
+        linked_video_game_source_id = Some(video_game_source_id);
         let demo_urls: Vec<String> = vec![
             "https://images.playstation.net/nba2k26/cover.jpg".to_string(),
             "https://videos.playstation.net/nba2k26/trailer.mp4".to_string(),
@@ -497,9 +499,9 @@ async fn main() -> Result<()> {
                 (u.clone(), media_type, role, title)
             })
             .collect();
-        inserted_media += ensure_provider_media_links_with_meta(
+        inserted_media += ensure_vg_source_media_links_with_meta(
             &db,
-            provider_item_id,
+            video_game_source_id,
             Some(vg_ps5),
             &structured,
             "psstore",
@@ -528,7 +530,7 @@ async fn main() -> Result<()> {
             .execute(&db.pool).await?;
         // Persist demo videos too
         for vurl in &["https://videos.playstation.net/nba2k26/trailer.mp4"] {
-            let _ = ensure_game_video(&db, vg_ps5, provider_item_id, vurl).await?;
+            let _ = ensure_game_video(&db, vg_ps5, video_game_source_id, vurl).await?;
         }
         let now = Utc::now();
         for (oj_id, loc) in offer_juris_to_region.iter() {
@@ -539,7 +541,7 @@ async fn main() -> Result<()> {
             };
             price_rows.push(PriceRow {
                 offer_jurisdiction_id: *oj_id,
-                provider_item_id: linked_provider_item_id,
+                video_game_source_id: linked_video_game_source_id,
                 recorded_at: now - chrono::Duration::days(2),
                 amount_minor: amt + 1000,
                 tax_inclusive: true,
@@ -549,7 +551,7 @@ async fn main() -> Result<()> {
             });
             price_rows.push(PriceRow {
                 offer_jurisdiction_id: *oj_id,
-                provider_item_id: linked_provider_item_id,
+                video_game_source_id: linked_video_game_source_id,
                 recorded_at: now,
                 amount_minor: amt,
                 tax_inclusive: true,
@@ -608,7 +610,11 @@ async fn main() -> Result<()> {
             } else if let Ok(Some(r)) = fx_svc.latest_rate(&base_ccy, &ccy).await {
                 Some(r)
             } else if let Ok(Some(rinv)) = fx_svc.latest_rate(&ccy, &base_ccy).await {
-                if rinv > 0.0 { Some(1.0 / rinv) } else { None }
+                if rinv > 0.0 {
+                    Some(1.0 / rinv)
+                } else {
+                    None
+                }
             } else {
                 None
             };
@@ -691,9 +697,9 @@ async fn main() -> Result<()> {
     let title_id: i64 = row.get("title_id");
     let video_game_id: i64 = row.get("video_game_id");
 
-    let media_count: i64 = if let Some(pid) = linked_provider_item_id {
+    let media_count: i64 = if let Some(pid) = linked_video_game_source_id {
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM public.provider_media_links WHERE provider_item_id=$1",
+            "SELECT COUNT(*) FROM public.provider_media_links WHERE video_game_source_id=$1",
         )
         .bind(pid)
         .persistent(false)
@@ -824,7 +830,7 @@ fn load_regions() -> Vec<String> {
 async fn ensure_game_video(
     db: &Db,
     video_game_id: i64,
-    provider_item_id: i64,
+    video_game_source_id: i64,
     url: &str,
 ) -> Result<i64> {
     if let Some(rec) =
@@ -840,11 +846,11 @@ async fn ensure_game_video(
     let mime = guess_mime(url);
     let rec = sqlx
         ::query(
-            "INSERT INTO public.game_videos (video_game_id, provider_item_id, kind, mime_type, duration_seconds, url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id"
+            "INSERT INTO public.game_videos (video_game_id, video_game_source_id, kind, mime_type, duration_seconds, url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id"
         )
         .persistent(false)
         .bind(video_game_id)
-        .bind(provider_item_id)
+        .bind(video_game_source_id)
         .bind("trailer")
         .bind(mime)
         .bind(Option::<i32>::None)

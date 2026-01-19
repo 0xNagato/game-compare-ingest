@@ -231,251 +231,257 @@ WHERE
     AND tmp_vgt_ranked.rn>1;
 
 -- 2) Dedupe video_games on (title_id, platform_id, edition)
-CREATE TEMP TABLE tmp_vg_ranked AS
-WITH
-    canonical_games AS (
-        SELECT
-            id,
-            title_id,
-            platform_id,
-            COALESCE(edition, '') AS edition_key,
-            created_at
-        FROM
-            public.video_games
-    ),
-    dupe_games AS (
-        SELECT
-            title_id,
-            platform_id,
-            edition_key
-        FROM
-            canonical_games
-        GROUP BY
-            title_id,
-            platform_id,
-            edition_key
-        HAVING
-            COUNT(*)>1
-    )
-SELECT
-    vg.id,
-    vg.title_id,
-    vg.platform_id,
-    vg.edition,
-    vg.created_at,
-    cg.edition_key,
-    (
-        EXISTS (
+-- Only run if game_media table exists (it's used in the ranking logic)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='game_media') THEN
+    CREATE TEMP TABLE tmp_vg_ranked AS
+    WITH
+        canonical_games AS (
             SELECT
-                1
+                id,
+                title_id,
+                platform_id,
+                COALESCE(edition, '') AS edition_key,
+                created_at
             FROM
-                public.game_media gm
-            WHERE
-                gm.video_game_id=vg.id
-                AND gm.kind='image'
-        )
-    ) AS has_images,
-    (
-        EXISTS (
+                public.video_games
+        ),
+        dupe_games AS (
             SELECT
-                1
+                title_id,
+                platform_id,
+                edition_key
             FROM
-                public.game_media gm
-            WHERE
-                gm.video_game_id=vg.id
-                AND gm.kind='video'
+                canonical_games
+            GROUP BY
+                title_id,
+                platform_id,
+                edition_key
+            HAVING
+                COUNT(*)>1
         )
-    ) AS has_videos,
-    (
-        EXISTS (
-            SELECT
-                1
-            FROM
-                public.provider_media_links pml
-            WHERE
-                pml.video_game_id=vg.id
-        )
-    ) AS has_media_links,
-    (
-        EXISTS (
-            SELECT
-                1
-            FROM
-                public.video_game_ratings_by_locale vrl
-            WHERE
-                vrl.video_game_id=vg.id
-        )
-    ) AS has_ratings,
-    ROW_NUMBER() OVER (
-        PARTITION BY
-            cg.title_id,
-            cg.platform_id,
-            cg.edition_key
-        ORDER BY
-            (
+    SELECT
+        vg.id,
+        vg.title_id,
+        vg.platform_id,
+        vg.edition,
+        vg.created_at,
+        cg.edition_key,
+        (
+            EXISTS (
+                SELECT
+                    1
+                FROM
+                    public.game_media gm
+                WHERE
+                    gm.video_game_id=vg.id
+                    AND gm.kind='image'
+            )
+        ) AS has_images,
+        (
+            EXISTS (
+                SELECT
+                    1
+                FROM
+                    public.game_media gm
+                WHERE
+                    gm.video_game_id=vg.id
+                    AND gm.kind='video'
+            )
+        ) AS has_videos,
+        (
+            EXISTS (
+                SELECT
+                    1
+                FROM
+                    public.provider_media_links pml
+                WHERE
+                    pml.video_game_id=vg.id
+            )
+        ) AS has_media_links,
+        (
+            EXISTS (
+                SELECT
+                    1
+                FROM
+                    public.video_game_ratings_by_locale vrl
+                WHERE
+                    vrl.video_game_id=vg.id
+            )
+        ) AS has_ratings,
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                cg.title_id,
+                cg.platform_id,
+                cg.edition_key
+            ORDER BY
                 (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.game_media gm
-                        WHERE
-                            gm.video_game_id=vg.id
-                            AND gm.kind='image'
+                    (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.game_media gm
+                            WHERE
+                                gm.video_game_id=vg.id
+                                AND gm.kind='image'
+                        )
                     )
-                )
-                OR (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.game_media gm
-                        WHERE
-                            gm.video_game_id=vg.id
-                            AND gm.kind='video'
+                    OR (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.game_media gm
+                            WHERE
+                                gm.video_game_id=vg.id
+                                AND gm.kind='video'
+                        )
                     )
-                )
-                OR (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.provider_media_links pml
-                        WHERE
-                            pml.video_game_id=vg.id
+                    OR (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.provider_media_links pml
+                            WHERE
+                                pml.video_game_id=vg.id
+                        )
                     )
-                )
-                OR (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.video_game_ratings_by_locale vrl
-                        WHERE
-                            vrl.video_game_id=vg.id
+                    OR (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.video_game_ratings_by_locale vrl
+                            WHERE
+                                vrl.video_game_id=vg.id
+                        )
                     )
-                )
-            ) DESC,
-            vg.created_at ASC,
-            vg.id ASC
-    ) AS rn,
-    FIRST_VALUE (vg.id) OVER (
-        PARTITION BY
-            cg.title_id,
-            cg.platform_id,
-            cg.edition_key
-        ORDER BY
-            (
+                ) DESC,
+                vg.created_at ASC,
+                vg.id ASC
+        ) AS rn,
+        FIRST_VALUE (vg.id) OVER (
+            PARTITION BY
+                cg.title_id,
+                cg.platform_id,
+                cg.edition_key
+            ORDER BY
                 (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.game_media gm
-                        WHERE
-                            gm.video_game_id=vg.id
-                            AND gm.kind='image'
+                    (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.game_media gm
+                            WHERE
+                                gm.video_game_id=vg.id
+                                AND gm.kind='image'
+                        )
                     )
-                )
-                OR (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.game_media gm
-                        WHERE
-                            gm.video_game_id=vg.id
-                            AND gm.kind='video'
+                    OR (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.game_media gm
+                            WHERE
+                                gm.video_game_id=vg.id
+                                AND gm.kind='video'
+                        )
                     )
-                )
-                OR (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.provider_media_links pml
-                        WHERE
-                            pml.video_game_id=vg.id
+                    OR (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.provider_media_links pml
+                            WHERE
+                                pml.video_game_id=vg.id
+                        )
                     )
-                )
-                OR (
-                    EXISTS (
-                        SELECT
-                            1
-                        FROM
-                            public.video_game_ratings_by_locale vrl
-                        WHERE
-                            vrl.video_game_id=vg.id
+                    OR (
+                        EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                public.video_game_ratings_by_locale vrl
+                            WHERE
+                                vrl.video_game_id=vg.id
+                        )
                     )
-                )
-            ) DESC,
-            vg.created_at ASC,
-            vg.id ASC
-    ) AS winner_id
-FROM
-    public.video_games vg
-    JOIN canonical_games cg ON cg.id=vg.id
-WHERE
-    (cg.title_id, cg.platform_id, cg.edition_key) IN (
-        SELECT
-            title_id,
-            platform_id,
-            edition_key
-        FROM
-            dupe_games
-    );
+                ) DESC,
+                vg.created_at ASC,
+                vg.id ASC
+        ) AS winner_id
+    FROM
+        public.video_games vg
+        JOIN canonical_games cg ON cg.id=vg.id
+    WHERE
+        (cg.title_id, cg.platform_id, cg.edition_key) IN (
+            SELECT
+                title_id,
+                platform_id,
+                edition_key
+            FROM
+                dupe_games
+        );
 
-UPDATE public.game_media gm
-SET
-    video_game_id=rg.winner_id
-FROM
-    tmp_vg_ranked rg
-WHERE
-    rg.rn>1
-    AND gm.video_game_id=rg.id;
+    UPDATE public.game_media gm
+    SET
+        video_game_id=rg.winner_id
+    FROM
+        tmp_vg_ranked rg
+    WHERE
+        rg.rn>1
+        AND gm.video_game_id=rg.id;
 
-UPDATE public.provider_media_links pml
-SET
-    video_game_id=rg.winner_id
-FROM
-    tmp_vg_ranked rg
-WHERE
-    rg.rn>1
-    AND pml.video_game_id=rg.id;
+    UPDATE public.provider_media_links pml
+    SET
+        video_game_id=rg.winner_id
+    FROM
+        tmp_vg_ranked rg
+    WHERE
+        rg.rn>1
+        AND pml.video_game_id=rg.id;
 
-UPDATE public.video_game_ratings_by_locale vrl
-SET
-    video_game_id=rg.winner_id
-FROM
-    tmp_vg_ranked rg
-WHERE
-    rg.rn>1
-    AND vrl.video_game_id=rg.id;
+    UPDATE public.video_game_ratings_by_locale vrl
+    SET
+        video_game_id=rg.winner_id
+    FROM
+        tmp_vg_ranked rg
+    WHERE
+        rg.rn>1
+        AND vrl.video_game_id=rg.id;
 
-INSERT INTO
-    public.video_games_dedupe_audit (
+    INSERT INTO
+        public.video_games_dedupe_audit (
+            winner_id,
+            loser_id,
+            loser_title_id,
+            loser_platform_id,
+            loser_edition,
+            loser_created_at
+        )
+    SELECT
         winner_id,
-        loser_id,
-        loser_title_id,
-        loser_platform_id,
-        loser_edition,
-        loser_created_at
-    )
-SELECT
-    winner_id,
-    id,
-    title_id,
-    platform_id,
-    edition,
-    created_at
-FROM
-    tmp_vg_ranked
-WHERE
-    rn>1 ON CONFLICT (winner_id, loser_id) DO NOTHING;
+        id,
+        title_id,
+        platform_id,
+        edition,
+        created_at
+    FROM
+        tmp_vg_ranked
+    WHERE
+        rn>1 ON CONFLICT (winner_id, loser_id) DO NOTHING;
 
-DELETE FROM public.video_games USING tmp_vg_ranked
-WHERE
-    public.video_games.id=tmp_vg_ranked.id
-    AND tmp_vg_ranked.rn>1;
+    DELETE FROM public.video_games USING tmp_vg_ranked
+    WHERE
+        public.video_games.id=tmp_vg_ranked.id
+        AND tmp_vg_ranked.rn>1;
+  END IF;
+END $$;
 
 COMMIT;

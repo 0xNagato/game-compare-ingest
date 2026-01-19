@@ -1,14 +1,57 @@
 use anyhow::Result;
 use i_miss_rust::database_ops::db::Db;
 use i_miss_rust::database_ops::steam::provider::SteamProvider;
-use sqlx::Row;
 use sqlx::types::chrono::Utc;
+use sqlx::Row;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 // (steam_ingest_once) Only uses high-level ensure_* helpers; price ingestion handled inside provider.
 use i_miss_rust::database_ops::ingest_providers::*;
+use i_miss_rust::util::env::{db_url_prefer_session, preflight_check};
 use reqwest::Client;
 use serde_json::json;
 // NOTE: Local ensure_* overrides removed; using shared helpers from ingest_providers now.
+
+async fn require_ingest_schema(db: &Db) -> Result<()> {
+    // Fail fast if the DB isn't migrated yet. This binary must NOT run migrations.
+    let required_tables: Vec<String> = vec![
+        // dims
+        "currencies",
+        "countries",
+        "jurisdictions",
+        // core ingest mapping
+        "providers",
+        "provider_items",
+        "provider_offers",
+        "retailers",
+        "offers",
+        "offer_jurisdictions",
+        // price fact + read-hot
+        "prices",
+        "current_price",
+        // observability + media
+        "ingest_runs",
+        "vg_source_media_links",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    let missing: Vec<String> = sqlx::query_scalar(
+        "SELECT t FROM unnest($1::text[]) AS t WHERE to_regclass('public.' || t) IS NULL",
+    )
+    .persistent(false)
+    .bind(&required_tables)
+    .fetch_all(&db.pool)
+    .await?;
+
+    if !missing.is_empty() {
+        return Err(anyhow::anyhow!(
+            "missing required ingestion tables in target DB: {missing:?}. Run migrations first (e.g., migrations_tool / db_migrate / Supabase migrations)."
+        ));
+    }
+
+    Ok(())
+}
 
 async fn dump_app_html(appid: &str) -> Result<std::path::PathBuf, anyhow::Error> {
     let url = format!(
@@ -43,6 +86,24 @@ async fn dump_app_html(appid: &str) -> Result<std::path::PathBuf, anyhow::Error>
 #[tokio::main]
 async fn main() -> Result<()> {
     i_miss_rust::util::env::bootstrap_cli("steam_ingest_once");
+    // Log a consolidated, redacted env snapshot (PSStore-style); do NOT require any one DSN key,
+    // because db_url_prefer_session() supports multiple sources and optional IPv6.
+    let _ = preflight_check(
+        "steam-ingest-once",
+        &[],
+        &[
+            "SUPABASE_IPV6_DB",
+            "SUPABASE_DB_SESSION_URL",
+            "SUPABASE_DB_URL",
+            "DATABASE_URL",
+            "DB_URL",
+            "DB_MAX_CONNS",
+            "STEAM_APP_IDS",
+            "STEAM_REGIONS",
+            "YEAR_MIN",
+            "YEAR_MAX",
+        ],
+    );
     // Logging init
     let subscriber = FmtSubscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
@@ -60,8 +121,7 @@ async fn main() -> Result<()> {
         .unwrap_or(2025);
     println!("remember: restricting to releases between {year_min}-{year_max} inclusive\n");
 
-    let database_url =
-        std::env::var("DATABASE_URL").or_else(|_| std::env::var("SUPABASE_DB_URL"))?;
+    let database_url = db_url_prefer_session()?;
     println!("[steam_ingest_once] connecting to DB (env provided)");
     let max_conns: u32 = std::env::var("DB_MAX_CONNS")
         .ok()
@@ -74,35 +134,28 @@ async fn main() -> Result<()> {
         std::env::set_var("SQLX_PG_SIMPLE", "1");
     }
     let db = Db::connect(&database_url, max_conns).await?;
+
+    // Ensure DB schema is present before any reads/writes.
+    require_ingest_schema(&db).await?;
     // Pin schema to public for all writes in this session
     let _ = sqlx::query("SET search_path TO public")
         .persistent(false)
         .execute(&db.pool)
         .await;
 
-    // Conditional bootstrap: seed baseline currency/country/jurisdiction only if empty
+    // Ingest must not bootstrap data. If lookups are empty, fail fast with a clear fix.
     let cur_cnt: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM currencies")
         .persistent(false)
         .fetch_one(&db.pool)
-        .await
-        .unwrap_or(0);
+        .await?;
     let cty_cnt: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM countries")
         .persistent(false)
         .fetch_one(&db.pool)
-        .await
-        .unwrap_or(0);
+        .await?;
     if cur_cnt == 0 || cty_cnt == 0 {
-        // Seed minimal USD/US with national jurisdiction
-        let usd_id = ensure_currency(&db, "USD", "US Dollar", 2).await?;
-        let us_id = ensure_country(&db, "US", "United States", usd_id).await?;
-        let _us_nat = ensure_national_jurisdiction(&db, us_id).await?;
-        println!(
-            "[steam_ingest_once] bootstrap: seeded baseline USD/US since currencies({cur_cnt}) countries({cty_cnt})"
-        );
-    } else {
-        println!(
-            "[steam_ingest_once] bootstrap: skipped (currencies={cur_cnt}, countries={cty_cnt})"
-        );
+        return Err(anyhow::anyhow!(
+            "missing lookup seed data (currencies={cur_cnt}, countries={cty_cnt}). Seed lookups first (currencies/countries/jurisdictions) using dedicated bootstrap tooling or SQL seed scripts; steam_ingest_once will not insert these automatically."
+        ));
     }
 
     // Require at least some app ids
@@ -213,15 +266,15 @@ async fn main() -> Result<()> {
         .bind(&app_ids)
         .fetch_all(&db.pool).await
         .unwrap_or_default();
-    let provider_item_ids: Vec<i64> = pid_rows.iter().map(|r| r.get::<i64, _>("id")).collect();
-    let prices_written: i64 = if provider_item_ids.is_empty() {
+    let video_game_source_ids: Vec<i64> = pid_rows.iter().map(|r| r.get::<i64, _>("id")).collect();
+    let prices_written: i64 = if video_game_source_ids.is_empty() {
         0
     } else {
         sqlx::query_scalar(
-            "SELECT COUNT(*)::bigint FROM prices WHERE recorded_at > now() - interval '10 minutes' AND provider_item_id = ANY($1)"
+            "SELECT COUNT(*)::bigint FROM prices WHERE recorded_at > now() - interval '10 minutes' AND video_game_source_id = ANY($1)"
         )
             .persistent(false)
-            .bind(&provider_item_ids)
+            .bind(&video_game_source_ids)
             .fetch_one(&db.pool).await
             .unwrap_or(0)
     };
@@ -254,7 +307,7 @@ async fn main() -> Result<()> {
                     ::query(
                         "SELECT oj.id, oj.currency_id, oj.jurisdiction_id FROM offer_jurisdictions oj \
                      JOIN provider_offers pof ON pof.offer_id = oj.offer_id \
-                     WHERE pof.provider_item_id=$1 ORDER BY oj.id"
+                     WHERE pof.video_game_source_id=$1 ORDER BY oj.id"
                     )
                     .persistent(false)
                     .bind(pid)
@@ -274,7 +327,7 @@ async fn main() -> Result<()> {
                 // Latest N prices (values)
                 let price_rows = sqlx
                     ::query(
-                        "SELECT recorded_at, amount_minor, tax_inclusive FROM prices WHERE provider_item_id=$1 ORDER BY recorded_at DESC LIMIT 5"
+                        "SELECT recorded_at, amount_minor, tax_inclusive FROM prices WHERE video_game_source_id=$1 ORDER BY recorded_at DESC LIMIT 5"
                     )
                     .persistent(false)
                     .bind(pid)
@@ -297,7 +350,7 @@ async fn main() -> Result<()> {
                         "SELECT cp.offer_jurisdiction_id, cp.amount_minor, cp.recorded_at FROM current_price cp \
                      JOIN offer_jurisdictions oj ON oj.id=cp.offer_jurisdiction_id \
                      JOIN provider_offers pof ON pof.offer_id=oj.offer_id \
-                     WHERE pof.provider_item_id=$1 ORDER BY cp.recorded_at DESC"
+                     WHERE pof.video_game_source_id=$1 ORDER BY cp.recorded_at DESC"
                     )
                     .persistent(false)
                     .bind(pid)
@@ -317,7 +370,7 @@ async fn main() -> Result<()> {
                 // Media links (include coarse kind + title for UI rendering)
                 let media_rows = sqlx
                     ::query(
-                        "SELECT kind, media_type, url, role, source, title FROM provider_media_links WHERE provider_item_id=$1 ORDER BY id"
+                        "SELECT kind, media_type, url, role, source, title FROM vg_source_media_links WHERE video_game_source_id=$1 ORDER BY id"
                     )
                     .persistent(false)
                     .bind(pid)
@@ -340,7 +393,7 @@ async fn main() -> Result<()> {
                 let diagnostic =
                     json!({
                     "app_id": aid,
-                    "provider_item_id": pid,
+                    "video_game_source_id": pid,
                     "offer_jurisdictions": offer_jurisdictions,
                     "prices_recent": prices,
                     "current_prices": current_prices,
@@ -368,7 +421,7 @@ async fn main() -> Result<()> {
                 let offer_sku = format!("steam:{}", aid);
                 let offer_id = ensure_offer(&db, sellable_id, retailer_id, Some(&offer_sku)).await?;
                 let _oj_id = ensure_offer_jurisdiction(&db, offer_id, us_nat_id, usd_id).await?;
-                let provider_item_id = ensure_provider_item(
+                let video_game_source_id = ensure_provider_item(
                     &db,
                     provider_id,
                     aid,
@@ -376,12 +429,12 @@ async fn main() -> Result<()> {
                 ).await?;
                 let provider_offer_id = link_provider_offer(
                     &db,
-                    provider_item_id,
+                    video_game_source_id,
                     offer_id,
                     Some(0.5)
                 ).await?;
 
-                println!("[steam_ingest_once] app {aid}: created provider_item id {} as fallback", provider_item_id);
+                println!("[steam_ingest_once] app {aid}: created provider_item id {} as fallback", video_game_source_id);
                 // Now proceed with diagnostics using the newly created provider_item
             }
             // Fetch and dump the HTML for this app page

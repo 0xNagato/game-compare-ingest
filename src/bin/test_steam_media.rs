@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
         ("appids", appid),
         ("cc", "US"),
         ("l", "english"),
-        ("filters", "screenshots,movies"),
+        ("thumbnails", "covers,trailers"),
     ];
 
     let resp = client

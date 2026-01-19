@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use dotenv::dotenv;
-use futures::{StreamExt, stream};
+use futures::{stream, StreamExt};
 use i_miss_rust::database_ops::db::Db;
 use i_miss_rust::database_ops::giantbomb::{collector, ingest, price_guide, ratings};
 use i_miss_rust::database_ops::itad::provider::ItadProvider;
@@ -8,14 +8,13 @@ use i_miss_rust::database_ops::nexarda::provider::{NexardaOptions, NexardaProvid
 use i_miss_rust::psstore_seed_pipeline;
 use i_miss_rust::util::env as env_util;
 use psstore_client::{PsConfig, PsStoreClient};
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, Notify, broadcast};
+use tokio::sync::{broadcast, Mutex, Notify};
 use tokio::task::JoinSet;
 use tokio_postgres::AsyncMessage;
 use tracing::{error, info, warn};
-use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 struct PsMetrics {
@@ -79,13 +78,11 @@ async fn main() -> Result<()> {
 
     // --- logging -------------------------------------------------------------
     dotenv().ok();
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    // Use plain text formatter for broad compatibility (no `json` feature requirement)
     tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .with_line_number(true)
-        .with_file(true)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,debug,sqlx=warn".into()),
+        )
         .init();
 
     // --- DB connect ----------------------------------------------------------
@@ -114,7 +111,7 @@ async fn main() -> Result<()> {
         anyhow::bail!("Database URL not configured; set SUPABASE_IPV6_DB or SUPABASE_DB_URL first");
     }
 
-    let max_conns: u32 = env_u32("DB_MAX_CONNS", 30);
+    let max_conns: u32 = env_u32("DB_MAX_CONNS", 10);
     // Important: the long-running ingest service must NOT auto-run migrations.
     // Use the no-migrate connector so startup does not push any SQL.
     let db = Db::connect_no_migrate(&database_url, max_conns)
@@ -500,6 +497,35 @@ async fn main() -> Result<()> {
         });
     }
 
+    // --- Xbox Store API provider loop ----------------------------------------
+    {
+        let db_xsa = db.clone();
+        let interval = env_u64("XBOX_STORE_LOOP_SECS", 3600);
+        let mut rx = shutdown_tx.subscribe();
+        tasks.spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(interval));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            ticker.tick().await;
+
+            loop {
+                info!("xbox_store_api: tick");
+                if let Err(e) =
+                    i_miss_rust::database_ops::xbox_store::provider::XboxStoreProvider::run_from_env(&db_xsa)
+                        .await
+                {
+                    error!(error = %e, "xbox_store_api run failed");
+                }
+                tokio::select! {
+                    _ = ticker.tick() => {},
+                    _ = rx.recv() => {
+                        info!("xbox_store_api: shutdown");
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
     // --- Steam provider loop -------------------------------------------------
     {
         let db_st = db.clone();
@@ -561,7 +587,7 @@ async fn main() -> Result<()> {
                     Ok(games) => {
                         info!(count = games.len(), "itad: fetched trending games");
                         // Media ingestion would happen here in production
-                        // Each game's media would be stored via ensure_provider_media_links_with_meta
+                        // Each game's media would be stored via ensure_vg_source_media_links_with_meta
                     }
                     Err(e) => {
                         error!(error = %e, "itad trending fetch failed");
@@ -845,7 +871,7 @@ fn start_http_server(
     shutdown_notify: Arc<Notify>,
     addr: String,
 ) {
-    use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+    use actix_web::{web, App, HttpResponse, HttpServer, Responder};
     tokio::spawn(async move {
         let db = web::Data::new(db);
         let wake = web::Data::new(ps_wake_tx);

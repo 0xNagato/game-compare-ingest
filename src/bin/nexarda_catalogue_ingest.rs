@@ -10,10 +10,10 @@ use tracing_subscriber::EnvFilter;
 use chrono::Utc;
 use i_miss_rust::database_ops::db::{Db, PriceRow};
 use i_miss_rust::database_ops::ingest_providers::{
-    PostIngestSummary, ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_offer,
+    ensure_country, ensure_currency, ensure_national_jurisdiction, ensure_offer,
     ensure_offer_jurisdiction, ensure_provider, ensure_provider_item, ensure_retailer,
     ensure_sellable_for_title, ensure_video_game_title_without_product, ingest_prices,
-    link_provider_offer,
+    link_provider_offer, PostIngestSummary,
 };
 use serde_json::json;
 
@@ -240,15 +240,15 @@ async fn main() -> Result<()> {
             ensure_video_game_title_without_product(&db, &slug_norm, &title_name).await?;
         let sellable_id = ensure_sellable_for_title(&db, title_id).await?;
         let offer_id = ensure_offer(&db, sellable_id, retailer_id, None).await?;
-        let provider_item_id = ensure_provider_item(
+        let video_game_source_id = ensure_provider_item(
             &db,
             provider_id,
             &format!("nexarda:{}", g.id),
             Some(json!({"orig_slug": g.slug})),
         )
         .await?;
-        link_provider_offer(&db, provider_item_id, offer_id, Some(0.6)).await?;
-        post_summary.record_provider_item(provider_item_id);
+        link_provider_offer(&db, video_game_source_id, offer_id, Some(0.6)).await?;
+        post_summary.record_provider_item(video_game_source_id);
 
         for (ccy_raw, price_val) in &g.prices {
             let ccy = ccy_raw.to_ascii_uppercase();
@@ -268,7 +268,7 @@ async fn main() -> Result<()> {
             let amount_minor = (price_f * (10f64).powi(minor_unit as i32)).round() as i64;
             price_rows.push(PriceRow {
                 offer_jurisdiction_id: oj_id,
-                provider_item_id: Some(provider_item_id),
+                video_game_source_id: Some(video_game_source_id),
                 recorded_at: Utc::now(),
                 amount_minor,
                 tax_inclusive: true,
@@ -516,15 +516,15 @@ async fn run_ndjson_stream(db: &Db, ndjson_path: &str) -> Result<()> {
         let title_id = ensure_video_game_title_without_product(db, &slug_norm, &title).await?;
         let sellable_id = ensure_sellable_for_title(db, title_id).await?;
         let offer_id = ensure_offer(db, sellable_id, retailer_id, None).await?;
-        let provider_item_id = ensure_provider_item(
+        let video_game_source_id = ensure_provider_item(
             db,
             provider_id,
             &format!("nexarda:{}", rec.id),
             Some(serde_json::json!({"orig_slug": slug_raw})),
         )
         .await?;
-        link_provider_offer(db, provider_item_id, offer_id, Some(0.6)).await?;
-        post_summary.record_provider_item(provider_item_id);
+        link_provider_offer(db, video_game_source_id, offer_id, Some(0.6)).await?;
+        post_summary.record_provider_item(video_game_source_id);
 
         if let Some(prices) = rec.prices.as_ref() {
             for (ccy_raw, price_val) in prices.iter() {
@@ -545,7 +545,7 @@ async fn run_ndjson_stream(db: &Db, ndjson_path: &str) -> Result<()> {
                 let amount_minor = (price_f * (10f64).powi(minor_unit as i32)).round() as i64;
                 price_rows.push(PriceRow {
                     offer_jurisdiction_id: oj_id,
-                    provider_item_id: Some(provider_item_id),
+                    video_game_source_id: Some(video_game_source_id),
                     recorded_at: Utc::now(),
                     amount_minor,
                     tax_inclusive: true,

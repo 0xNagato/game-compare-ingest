@@ -83,8 +83,15 @@ async fn main() -> Result<()> {
 
     // 2) GiantBomb JSON file (optional). If GIANT_BOMB_FILE not set, default path under keep/
     let gb_enabled = std::env::var("GB_ENABLED").ok().as_deref() == Some("1");
-    let gb_path = std::env::var("GIANT_BOMB_FILE")
-        .unwrap_or_else(|_| "keep/giant_bomb_games_detailed.json".into());
+    let gb_path = std::env::var("GIANT_BOMB_FILE").unwrap_or_else(|_| {
+        if std::path::Path::new("merged_games.json").exists() {
+            "merged_games.json".into()
+        } else if std::path::Path::new("keep/giant_bomb_games_detailed.json").exists() {
+            "keep/giant_bomb_games_detailed.json".into()
+        } else {
+            "giant_bomb_games_detailed.json".into()
+        }
+    });
     if gb_enabled {
         info!(path=%gb_path, "provider=giantbomb_json action=start");
         match gb_ingest_from_file(
