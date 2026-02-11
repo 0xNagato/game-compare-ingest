@@ -374,7 +374,7 @@ Notes:
 
 ### Method
 
-- Step 2 sampling executed on **2025-11-24** directly against Supabase project `mpdxojdqjlmrsjdxustc` using the SQL editor.
+- Step 2 sampling executed on **2025-11-24** directly against Supabase project `[REDACTED]` using the SQL editor.
 - Pulled a random slice of `prices` (940 rows) alongside provider and currency metadata; raw outputs captured in the Composio scratch directory (`sampling_summary.json`, `index_metadata_summary.json`, `column_metadata_summary.json`).
 - Supplemental aggregation queries computed provider share, currency distribution, extreme values, and metadata completeness for the linked `provider_items` and `offers` tables.
 

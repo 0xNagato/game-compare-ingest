@@ -1,8 +1,0 @@
-{
-    "postman.settings.dotenv-detection-notification-visibility": false,
-
-    // Multi-root workspace note: the Laravel VS Code extension may read settings from the window scope.
-    // Point it at a real PHP binary so it doesn't try to execute `php` via /bin/sh.
-    "Laravel.phpCommand": "\"/Users/lowkey/Library/Application Support/Herd/bin/php\" \"{code}\"",
-    "Laravel.phpEnvironment": "herd"
-}
