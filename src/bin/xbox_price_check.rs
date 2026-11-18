@@ -102,7 +102,7 @@ async fn get_access_token(tenant_id: &str, client_id: &str, client_secret: &str)
         ("scope", "https://onestore.microsoft.com/.default"),
     ];
 
-    println!("🔑 Authenticating with Microsoft Entra ID...");
+    println!("Authenticating with Microsoft Entra ID...");
 
     let client = Client::new();
     let response = client
@@ -124,7 +124,7 @@ async fn get_access_token(tenant_id: &str, client_id: &str, client_secret: &str)
         .context("Failed to parse token response")?;
 
     println!(
-        "✅ Authentication successful! Token expires in {} seconds\n",
+        "[ok] Authentication successful! Token expires in {} seconds\n",
         token_response.expires_in
     );
 
@@ -144,8 +144,8 @@ async fn get_product_prices(
         markets: markets.iter().map(|s| s.to_string()).collect(),
     };
 
-    println!("🔍 Querying Xbox Store API for product: {}", product_id);
-    println!("📍 Markets: {}\n", markets.join(", "));
+    println!("Querying Xbox Store API for product: {}", product_id);
+    println!("Markets: {}\n", markets.join(", "));
 
     let client = Client::new();
     let response = client
@@ -179,14 +179,14 @@ fn display_prices(product_response: &ProductResponse, markets: &[&str]) {
     let products = match &product_response.products {
         Some(p) => p,
         None => {
-            println!("❌ No products found in response");
+            println!("[error] No products found in response");
             return;
         }
     };
 
     if products.is_empty() {
-        println!("❌ No products returned from API");
-        println!("\nℹ️  This could mean:");
+        println!("[error] No products returned from API");
+        println!("\n[info]  This could mean:");
         println!("   • The product ID doesn't exist");
         println!("   • The product isn't available in the requested markets");
         println!("   • NBA Live 26 hasn't been released yet");
@@ -198,19 +198,19 @@ fn display_prices(product_response: &ProductResponse, markets: &[&str]) {
 
         let product_id = product.product_id.as_deref().unwrap_or("Unknown ID");
 
-        println!("🎮 {}", title);
-        println!("📦 Product ID: {}\n", product_id);
+        println!("{}", title);
+        println!("Product ID: {}\n", product_id);
 
         let skus = match &product.sku_availabilities {
             Some(s) => s,
             None => {
-                println!("⚠️  No SKU availabilities found\n");
+                println!("[warn]  No SKU availabilities found\n");
                 continue;
             }
         };
 
         for (market_idx, market) in markets.iter().enumerate() {
-            println!("┌─ 📍 Market: {}", market);
+            println!("┌─ Market: {}", market);
 
             let mut found_price = false;
 
@@ -231,12 +231,12 @@ fn display_prices(product_response: &ProductResponse, markets: &[&str]) {
                                 let msrp = price_info.msrp.unwrap_or(0.0);
                                 let currency = price_info.currency_code.as_deref().unwrap_or("???");
 
-                                println!("│  📋 {}", sku_title);
-                                println!("│  💰 List Price: {:.2} {}", list_price, currency);
+                                println!("│  {}", sku_title);
+                                println!("│  List Price: {:.2} {}", list_price, currency);
                                 if msrp > 0.0 && (msrp - list_price).abs() > 0.01 {
-                                    println!("│  🏷️  MSRP: {:.2} {}", msrp, currency);
+                                    println!("│   MSRP: {:.2} {}", msrp, currency);
                                     let discount = ((msrp - list_price) / msrp * 100.0).round();
-                                    println!("│  🎉 Discount: {}%", discount);
+                                    println!("│  Discount: {}%", discount);
                                 }
                             }
                         }
@@ -245,7 +245,7 @@ fn display_prices(product_response: &ProductResponse, markets: &[&str]) {
             }
 
             if !found_price {
-                println!("│  ⚠️  No pricing information available");
+                println!("│  [warn]  No pricing information available");
             }
 
             if market_idx < markets.len() - 1 {
@@ -265,7 +265,7 @@ async fn main() -> Result<()> {
     i_miss_rust::util::env::bootstrap_cli("xbox_price_check");
     dotenv::dotenv().ok();
 
-    println!("\n🎮 Xbox Store API - NBA Live 26 Price Checker");
+    println!("\nXbox Store API - NBA Live 26 Price Checker");
     println!("═══════════════════════════════════════════════════════════\n");
 
     // Load credentials from environment
@@ -284,7 +284,7 @@ async fn main() -> Result<()> {
     // Query multiple SKU regions
     let markets = vec!["US", "GB", "JP", "AU", "CA", "DE"];
 
-    println!("ℹ️  Note: NBA Live 26 may not be released yet.");
+    println!("[info]  Note: NBA Live 26 may not be released yet.");
     println!("   Using NBA 2K product for demonstration.\n");
 
     let product_response = get_product_prices(&access_token, product_id, &markets).await?;
@@ -292,7 +292,7 @@ async fn main() -> Result<()> {
     // Display results
     display_prices(&product_response, &markets);
 
-    println!("\n💡 Tips:");
+    println!("\nTips:");
     println!("   • Update the product_id variable with the actual NBA Live 26 ID");
     println!("   • Add/remove markets in the markets vector as needed");
     println!("   • Common markets: US, GB, FR, DE, JP, AU, CA, BR, MX");

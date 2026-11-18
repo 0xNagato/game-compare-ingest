@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let raw = fs::read_to_string(path)?;
     let cat: CatalogueRoot = serde_json::from_str(&raw)?;
 
-    println!("✅ Catalogue loaded successfully");
+    println!("[ok] Catalogue loaded successfully");
     println!("   • Success flag: {}", cat.success);
     println!("   • Code: {:?}", cat.code);
     println!("   • Message: {:?}", cat.message);
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("✅ Game statistics:");
+    println!("[ok] Game statistics:");
     println!("   • Games with pricing: {}", games_with_pricing);
     println!("   • Games without pricing: {}", games_no_pricing);
     println!("   • Games with discounts: {}", games_with_discounts);
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
     );
     println!();
 
-    println!("✅ Currency coverage:");
+    println!("[ok] Currency coverage:");
     let mut curr_list: Vec<_> = currency_stats.iter().collect();
     curr_list.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
     for (curr, count) in curr_list.iter().take(10) {
@@ -131,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
         );
         simple_processed += 1;
     }
-    println!("✅ Simple mode would process: {} games\n", simple_processed);
+    println!("[ok] Simple mode would process: {} games\n", simple_processed);
 
     // Test full mode simulation
     println!("Test 4: Full Mode Simulation (Titles + Pricing)");
@@ -188,7 +188,7 @@ async fn main() -> anyhow::Result<()> {
         full_processed += 1;
     }
     println!(
-        "\n✅ Full mode would process: {} games (sample)\n",
+        "\n[ok] Full mode would process: {} games (sample)\n",
         full_processed
     );
 
@@ -219,7 +219,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("✅ NDJSON streaming results:");
+    println!("[ok] NDJSON streaming results:");
     println!("   • Total games parsed: {}", ndjson_count);
     println!("   • Parse errors: {}", ndjson_errors);
     println!(
@@ -232,7 +232,7 @@ async fn main() -> anyhow::Result<()> {
     println!("Test 6: Configuration Options Summary");
     println!("====================================");
 
-    println!("✅ Environment variables supported:\n");
+    println!("[ok] Environment variables supported:\n");
 
     println!("Core Options:");
     println!(
@@ -258,23 +258,23 @@ async fn main() -> anyhow::Result<()> {
     // Final summary
     println!("=== Verification Complete ===\n");
 
-    println!("✅ Nexarda Catalogue Ingestion:");
-    println!("   • JSON catalogue: ✅ Parseable");
+    println!("[ok] Nexarda Catalogue Ingestion:");
+    println!("   • JSON catalogue: [ok] Parseable");
     println!("   • Games loaded: {} entries", cat.games.len());
     println!(
         "   • Pricing data: {} games with prices",
         games_with_pricing
     );
     println!(
-        "   • NDJSON format: ✅ Streaming ready ({} lines)",
+        "   • NDJSON format: [ok] Streaming ready ({} lines)",
         ndjson_count
     );
-    println!("   • Simple mode: ✅ Titles-only ingestion supported");
-    println!("   • Full mode: ✅ Full pricing ingestion supported");
-    println!("   • Resume capability: ✅ Offset and resume-after supported");
+    println!("   • Simple mode: [ok] Titles-only ingestion supported");
+    println!("   • Full mode: [ok] Full pricing ingestion supported");
+    println!("   • Resume capability: [ok] Offset and resume-after supported");
     println!();
 
-    println!("✅ Nexarda catalogue structure verification complete!");
+    println!("[ok] Nexarda catalogue structure verification complete!");
     println!("Ready for production ingestion with:");
     println!("  • nexarda_catalogue_ingest (offline JSON/NDJSON processing)");
     println!("  • nexarda_ingest (real-time API processing with NEXARDA_API_KEY)");

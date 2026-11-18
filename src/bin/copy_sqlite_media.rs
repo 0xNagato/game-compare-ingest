@@ -10,7 +10,7 @@
 //!
 //! Notes:
 //! - Expects FK video_game_id values to already exist in Postgres.
-//! - Upserts on (video_game_id, source, external_id) — external_id should uniquely identify
+//! - Upserts on (video_game_id, source, external_id) - external_id should uniquely identify
 //!   the media item for that source (commonly the media URL itself).
 
 use anyhow::{anyhow, bail, Context, Result};

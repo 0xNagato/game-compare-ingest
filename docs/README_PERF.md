@@ -151,7 +151,7 @@ WHERE offer_jurisdiction_id = $1;
 
 ### Extension & Concurrency Notes
 
-Concurrent refresh depends on a valid unique index covering all rows—ensure `mv_price_daily_pk` remains intact. If schema changes require dropping the index, drop the cron job first to avoid refresh failures, then recreate both index and job.
+Concurrent refresh depends on a valid unique index covering all rows-ensure `mv_price_daily_pk` remains intact. If schema changes require dropping the index, drop the cron job first to avoid refresh failures, then recreate both index and job.
 
 ### Future Enhancements
 

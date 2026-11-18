@@ -104,7 +104,7 @@ fn main() {
     };
     if dsn_key.is_empty() {
         eprintln!(
-            "[ERROR] Missing SUPABASE_DB_URL (or DB_URL/DATABASE_URL) — set to your Postgres DSN, e.g., postgres://user:pass@host:port/db"
+            "[ERROR] Missing SUPABASE_DB_URL (or DB_URL/DATABASE_URL) - set to your Postgres DSN, e.g., postgres://user:pass@host:port/db"
         );
         has_errors = true;
     } else {

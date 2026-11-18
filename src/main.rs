@@ -768,7 +768,7 @@ async fn main() -> Result<()> {
     }
 
     // --- Ctrl+C waiter & graceful shutdown ----------------------------------
-    info!("service started — press Ctrl+C or POST /api/shutdown to stop");
+    info!("service started - press Ctrl+C or POST /api/shutdown to stop");
     if one_off_mode {
         info!("  ↳ ONE_OFF_MODE: All providers auto-enabled with continuous loops");
     }
@@ -791,7 +791,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    info!("all tasks stopped — goodbye");
+    info!("all tasks stopped - goodbye");
     Ok(())
 }
 

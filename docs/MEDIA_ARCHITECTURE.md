@@ -1,6 +1,6 @@
 # Media Architecture Deep Dive
 
-## 🎯 **Design Philosophy: Hybrid Approach**
+## **Design Philosophy: Hybrid Approach**
 
 **Problem:** Traditional FK-based media tables don't scale to 100M+ rows.
 
@@ -8,7 +8,7 @@
 
 ---
 
-## 🔥 **Hot Path: Primary Media (JSONB)**
+## **Hot Path: Primary Media (JSONB)**
 
 ### What Goes Here:
 
@@ -30,20 +30,20 @@ WHERE title_id = 123;
 
 ### Benefits:
 
-- ✅ **Zero joins** (fastest possible)
-- ✅ **Atomic updates** (one row write)
-- ✅ **Cache-friendly** (Redis/Postgres cache entire row)
-- ✅ **No FK overhead** on parent table
+- **Zero joins** (fastest possible)
+- **Atomic updates** (one row write)
+- **Cache-friendly** (Redis/Postgres cache entire row)
+- **No FK overhead** on parent table
 
 ### Trade-offs:
 
-- ⚠️ Limited to ~4 media items per game
-- ⚠️ Can't easily query "all covers" across games
-- ✅ But that's fine - 99% of queries fetch ONE game's media
+- Limited to ~4 media items per game
+- Can't easily query "all covers" across games
+- But that's fine - 99% of queries fetch ONE game's media
 
 ---
 
-## ❄️ **Cold Path: Bulk Media (No FK Table)**
+## **Cold Path: Bulk Media (No FK Table)**
 
 ### What Goes Here:
 
@@ -69,19 +69,19 @@ create table game_media (
 
 ### Benefits:
 
-- ✅ **10x faster inserts** (no FK validation)
-- ✅ **No cascade locks** (deleting video_game doesn't scan 100M media rows)
-- ✅ **Smaller indexes** (partial + BRIN)
-- ✅ **Composite PK = free deduplication**
+- **10x faster inserts** (no FK validation)
+- **No cascade locks** (deleting video_game doesn't scan 100M media rows)
+- **Smaller indexes** (partial + BRIN)
+- **Composite PK = free deduplication**
 
 ### Trade-offs:
 
-- ⚠️ Orphaned rows possible (media for deleted games)
-- ✅ Handled by scheduled cleanup job (daily)
+- Orphaned rows possible (media for deleted games)
+- Handled by scheduled cleanup job (daily)
 
 ---
 
-## 🚀 **Performance Tricks Applied**
+## **Performance Tricks Applied**
 
 ### 1. **Composite Primary Key (Deduplication)**
 
@@ -142,17 +142,17 @@ from game_media group by video_game_id;
 
 ---
 
-## 📊 **Scale Comparison**
+## **Scale Comparison**
 
 ### Traditional FK Approach:
 
 ```sql
 create table game_media (
   id bigint primary key,
-  video_game_id bigint references video_games(id),  -- ❌ FK
+  video_game_id bigint references video_games(id),  -- FK
   url text
 );
-create index game_media_video_game_idx on game_media(video_game_id);  -- ❌ Huge
+create index game_media_video_game_idx on game_media(video_game_id);  -- Huge
 ```
 
 | Metric                | 10M Media | 100M Media | 1B Media |
@@ -166,12 +166,12 @@ create index game_media_video_game_idx on game_media(video_game_id);  -- ❌ Hug
 
 ```sql
 create table game_media (
-  video_game_id bigint not null,  -- ✅ No FK
+  video_game_id bigint not null,  -- No FK
   ...
   primary key (video_game_id, source, external_id)
 );
-create index using brin(created_at);  -- ✅ Tiny
-create index (video_game_id) where created_at > now() - interval '1 year';  -- ✅ Partial
+create index using brin(created_at);  -- Tiny
+create index (video_game_id) where created_at > now() - interval '1 year';  -- Partial
 ```
 
 | Metric                   | 10M Media | 100M Media | 1B Media |
@@ -186,7 +186,7 @@ create index (video_game_id) where created_at > now() - interval '1 year';  -- �
 
 ---
 
-## 🧹 **Orphan Management**
+## **Orphan Management**
 
 ### Problem:
 
@@ -215,7 +215,7 @@ SELECT * FROM cleanup_orphaned_media();
 
 ---
 
-## 🎬 **Query Patterns**
+## **Query Patterns**
 
 ### 1. **Get Primary Media (Hot Path)**
 
@@ -278,7 +278,7 @@ HAVING count(*) > 1;
 
 ---
 
-## 📦 **Storage Architecture**
+## **Storage Architecture**
 
 ```
 video_games table
@@ -310,7 +310,7 @@ Schema notes (2025-11):
   - `stream_url` – playable video stream or adaptive playlist (keys: `stream_url`, `video_url`, `m3u8`, `playable_url`).
   - `poster_url` – representative poster/frame (keys: `poster_url`, `preview_url`, `image`, `hero`, `cover`).
   Each column has a partial index (`WHERE <col> IS NOT NULL`) to keep bloat minimal while accelerating UI/API paths that need just one variant without parsing JSON.
-  Upsert logic (see `ingest_providers::upsert_game_media*`) populates these columns automatically—legacy rows were backfilled via migration 0492. JSON keys remain for backward compatibility; a future cleanup can subtract lifted keys once downstream consumers are fully migrated.
+  Upsert logic (see `ingest_providers::upsert_game_media*`) populates these columns automatically-legacy rows were backfilled via migration 0492. JSON keys remain for backward compatibility; a future cleanup can subtract lifted keys once downstream consumers are fully migrated.
 
 **Total for 1M games:**
 
@@ -320,7 +320,7 @@ Schema notes (2025-11):
 
 ---
 
-## 🎓 **Why This Shows Senior-Level Thinking**
+## **Why This Shows Senior-Level Thinking**
 
 ### 1. **Trade-off Analysis**
 
@@ -352,7 +352,7 @@ Schema notes (2025-11):
 
 ---
 
-## 🚀 **Deployment Checklist**
+## **Deployment Checklist**
 
 ```bash
 # 1. Apply migration
@@ -374,7 +374,7 @@ cargo run --bin backfill_media_from_providers
 
 ---
 
-## 💡 **Interview Talking Points**
+## **Interview Talking Points**
 
 **"Why no FK on media table?"**
 
@@ -392,4 +392,4 @@ cargo run --bin backfill_media_from_providers
 
 > "Hybrid approach: primary media (cover, hero, trailer) lives in JSONB on the parent table for zero-join access. Bulk media (screenshots, artwork) is in a separate table with partial indexes on recent data only, since 95% of queries fetch media from the last year."
 
-🎯 **This architecture shows you can design for real-world scale, not just toy examples!**
+**This architecture shows you can design for real-world scale, not just toy examples!**

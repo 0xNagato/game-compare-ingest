@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         year_max, limit, "backfill: starting candidate scan"
     );
     info!(
-        "remember: backfill scan (window {year_min}-{year_max} inclusive) — evaluating media & price coverage"
+        "remember: backfill scan (window {year_min}-{year_max} inclusive) - evaluating media & price coverage"
     );
 
     // Optional feature flags / filters

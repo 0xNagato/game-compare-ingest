@@ -2,7 +2,7 @@
 
 ## What Changed in `schema_optimized.sql`?
 
-### ✅ **Added to Schema:**
+### **Added to Schema:**
 
 1. **Full-Text Search (tsvector) on 3 tables:**
    - `video_game_titles.search_vector` (auto-generated from title)
@@ -31,7 +31,7 @@
 
 ## Per-Table Impact Breakdown
 
-### 🔥🔥🔥 **HUGE IMPACT**
+### **HUGE IMPACT**
 
 **`video_game_titles` (100k-1M rows)**
 ```sql
@@ -44,7 +44,7 @@ SELECT * FROM video_game_titles
 WHERE search_vector @@ websearch_to_tsquery('english', 'zelda breath wild');
 -- Time: 20-50ms (50-100x faster!)
 ```
-**Impact:** 🚀 **50-100x faster text search**
+**Impact:** **50-100x faster text search**
 
 ---
 
@@ -59,7 +59,7 @@ WHERE search_vector @@ websearch_to_tsquery('english', 'zelda breath wild');
 -- B-tree index: 400MB (precise lookups)
 -- Insert time: ~0.3ms per row (3x faster!)
 ```
-**Impact:** 🚀 **1000x smaller time-series index, 3x faster writes**
+**Impact:** **1000x smaller time-series index, 3x faster writes**
 
 ---
 
@@ -74,11 +74,11 @@ SELECT amount_minor FROM current_price WHERE offer_jurisdiction_id = 123;
 -- Steps: 1) Index-only scan
 -- Time: ~0.5ms (1 disk read, 2-4x faster!)
 ```
-**Impact:** 🚀 **2-4x faster latest price lookups**
+**Impact:** **2-4x faster latest price lookups**
 
 ---
 
-### 🔥🔥 **HIGH IMPACT**
+### **HIGH IMPACT**
 
 **`products` (100k-1M rows)**
 - **tsvector search:** 10-50x faster product name search
@@ -89,7 +89,7 @@ SELECT amount_minor FROM current_price WHERE offer_jurisdiction_id = 123;
 
 ---
 
-### 🔥 **MODERATE IMPACT**
+### **MODERATE IMPACT**
 
 **`game_consoles` (1k-10k rows)**
 - **tsvector search:** 5-10x faster (but small table, absolute time still low)
@@ -103,7 +103,7 @@ SELECT amount_minor FROM current_price WHERE offer_jurisdiction_id = 123;
 
 ---
 
-### ❌ **NO IMPACT** (too small or no applicable optimization)
+### **NO IMPACT** (too small or no applicable optimization)
 
 - `currencies` (50 rows)
 - `countries` (200 rows)
@@ -133,10 +133,10 @@ WHERE recorded_at > now() - interval '30 days';
 ```
 
 **Affected queries:**
-- ✅ Large table scans (>100k rows)
-- ✅ Aggregations (COUNT, SUM, AVG)
-- ✅ Analytics/reports
-- ❌ Single-row lookups (no benefit)
+- Large table scans (>100k rows)
+- Aggregations (COUNT, SUM, AVG)
+- Analytics/reports
+- Single-row lookups (no benefit)
 
 ---
 
@@ -145,9 +145,9 @@ WHERE recorded_at > now() - interval '30 days';
 **Change:** All indexes created with `CONCURRENTLY` keyword
 
 **Impact:**
-- ✅ **Zero downtime** during index creation
-- ✅ Writes continue during index build
-- ⚠️ **20% slower index build** (but non-blocking)
+- **Zero downtime** during index creation
+- Writes continue during index build
+- **20% slower index build** (but non-blocking)
 
 **Example:**
 ```sql
@@ -206,28 +206,28 @@ When I said tsvector is "similar to Elasticsearch," I meant:
 
 | Feature | **Postgres tsvector** | **Elasticsearch** |
 |---------|----------------------|-------------------|
-| Setup complexity | ✅ Already have Postgres | ❌ New infrastructure |
-| Performance (<10M docs) | ✅ 50ms avg | ✅ 10ms avg |
-| Performance (>100M docs) | ⚠️ Slows down | ✅ Scales horizontally |
-| Query complexity | ⚠️ Basic FTS | ✅ Advanced (ML, autocomplete) |
-| Maintenance | ✅ One database | ❌ Separate cluster |
-| Cost | ✅ Free | ❌ Hosting/licensing |
+| Setup complexity | Yes Already have Postgres | No New infrastructure |
+| Performance (<10M docs) | Yes 50ms avg | Yes 10ms avg |
+| Performance (>100M docs) | Partial Slows down | Yes Scales horizontally |
+| Query complexity | Partial Basic FTS | Yes Advanced (ML, autocomplete) |
+| Maintenance | Yes One database | No Separate cluster |
+| Cost | Yes Free | No Hosting/licensing |
 
 ### **For Your Platform (100k-1M game titles):**
 
-✅ **Use Postgres tsvector** because:
+**Use Postgres tsvector** because:
 - You already have Postgres
 - Your search corpus is small (<10M documents)
 - Simple queries ("find games matching X")
 - Free and integrated
 
-❌ **Don't use Elasticsearch** because:
+**Don't use Elasticsearch** because:
 - Overkill for your data volume
 - Extra infrastructure to maintain
 - Adds complexity and cost
 - tsvector gives you 95% of the benefit
 
-**Bottom line:** Elasticsearch is for companies with 100M+ docs, complex search UX, and engineering resources. You don't need it (yet)! 🎯
+**Bottom line:** Elasticsearch is for companies with 100M+ docs, complex search UX, and engineering resources. You don't need it (yet)! 
 
 ---
 

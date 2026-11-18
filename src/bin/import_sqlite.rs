@@ -313,7 +313,7 @@ async fn main() -> Result<()> {
         max_conns = 1;
         tracing::info!(
             max_conns,
-            "FAST_INGEST_ONE_CONN enabled — using single connection"
+            "FAST_INGEST_ONE_CONN enabled - using single connection"
         );
     }
 
@@ -844,7 +844,7 @@ impl ImportContext {
 
         if self.media_only {
             info!(
-                "MEDIA_ONLY enabled — skipping non-media stages (lookups, products, video_games)"
+                "MEDIA_ONLY enabled - skipping non-media stages (lookups, products, video_games)"
             );
         } else {
             // Providers (from legacy sources) first so media can resolve provider slugs
@@ -1182,7 +1182,7 @@ impl ImportContext {
         if stage == "game_images" || stage == "game_videos" {
             if let Ok(v) = std::env::var("FORCE_REIMPORT_MEDIA") {
                 if v == "1" || v.eq_ignore_ascii_case("true") {
-                    tracing::info!(stage, "FORCE_REIMPORT_MEDIA=1 — ignoring done sentinel");
+                    tracing::info!(stage, "FORCE_REIMPORT_MEDIA=1 - ignoring done sentinel");
                     return Ok(false);
                 }
             }
@@ -1190,7 +1190,7 @@ impl ImportContext {
             if stage == "game_images" {
                 if let Ok(v) = std::env::var("FORCE_REIMPORT_IMAGES") {
                     if v == "1" || v.eq_ignore_ascii_case("true") {
-                        tracing::info!(stage, "FORCE_REIMPORT_IMAGES=1 — ignoring done sentinel");
+                        tracing::info!(stage, "FORCE_REIMPORT_IMAGES=1 - ignoring done sentinel");
                         return Ok(false);
                     }
                 }
@@ -1198,7 +1198,7 @@ impl ImportContext {
             if stage == "game_videos" {
                 if let Ok(v) = std::env::var("FORCE_REIMPORT_VIDEOS") {
                     if v == "1" || v.eq_ignore_ascii_case("true") {
-                        tracing::info!(stage, "FORCE_REIMPORT_VIDEOS=1 — ignoring done sentinel");
+                        tracing::info!(stage, "FORCE_REIMPORT_VIDEOS=1 - ignoring done sentinel");
                         return Ok(false);
                     }
                 }
@@ -1212,7 +1212,7 @@ impl ImportContext {
                     tracing::info!(
                         stage,
                         reset_list,
-                        "IMPORT_RESET override — ignoring done sentinel"
+                        "IMPORT_RESET override - ignoring done sentinel"
                     );
                     return Ok(false);
                 }
@@ -1251,7 +1251,7 @@ impl ImportContext {
             .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
             .unwrap_or(true);
         if !resume {
-            tracing::info!(source, "IMPORT_RESUME=0 set — ignoring durable checkpoint");
+            tracing::info!(source, "IMPORT_RESUME=0 set - ignoring durable checkpoint");
             return Ok(0);
         }
         if let Some(row) = sqlx::query(
@@ -1268,7 +1268,7 @@ impl ImportContext {
         } else {
             tracing::info!(
                 source,
-                "no durable checkpoint found — starting from beginning"
+                "no durable checkpoint found - starting from beginning"
             );
             Ok(0)
         }
@@ -1414,7 +1414,7 @@ impl ImportContext {
 
     async fn import_currencies(&mut self) -> Result<()> {
         if self.is_stage_done("currencies").await? {
-            info!("stage currencies:done — skipping import");
+            info!("stage currencies:done - skipping import");
             return Ok(());
         }
         let total = sqlite_count(&self.sqlite, "currencies")
@@ -1459,7 +1459,7 @@ impl ImportContext {
 
     async fn import_platforms(&mut self) -> Result<()> {
         if self.is_stage_done("platforms").await? {
-            info!("stage platforms:done — skipping import");
+            info!("stage platforms:done - skipping import");
             return Ok(());
         }
         let total = sqlite_count(&self.sqlite, "platforms")
@@ -1545,7 +1545,7 @@ impl ImportContext {
 
     async fn import_countries(&mut self) -> Result<()> {
         if self.is_stage_done("countries").await? {
-            info!("stage countries:done — skipping import");
+            info!("stage countries:done - skipping import");
             return Ok(());
         }
         let total = sqlite_count(&self.sqlite, "countries")
@@ -1675,7 +1675,7 @@ impl ImportContext {
 
     async fn import_products(&mut self) -> Result<()> {
         if self.is_stage_done("products").await? {
-            info!("stage products:done — skipping import");
+            info!("stage products:done - skipping import");
             return Ok(());
         }
         // Determine resume point
@@ -1934,7 +1934,7 @@ impl ImportContext {
 
     async fn import_video_games(&mut self) -> Result<()> {
         if self.is_stage_done("video_games").await? {
-            info!("stage video_games:done — skipping import");
+            info!("stage video_games:done - skipping import");
             return Ok(());
         }
         info!("importing video game instances");
@@ -2612,7 +2612,7 @@ impl ImportContext {
 
     async fn import_game_images(&mut self) -> Result<()> {
         if self.is_stage_done("game_images").await? {
-            info!("stage game_images:done — skipping import");
+            info!("stage game_images:done - skipping import");
             return Ok(());
         }
         info!("importing legacy game_images → game_media (image)");
@@ -2968,7 +2968,7 @@ impl ImportContext {
 
     async fn import_game_videos(&mut self) -> Result<()> {
         if self.is_stage_done("game_videos").await? {
-            info!("stage game_videos:done — skipping import");
+            info!("stage game_videos:done - skipping import");
             return Ok(());
         }
         info!("importing legacy game_videos → game_media (video)");
@@ -3000,7 +3000,7 @@ impl ImportContext {
         let missing_url = !select_cols.contains(&"url");
         if missing_url {
             info!(
-                "legacy game_videos table lacks 'url' column — will derive fallback URLs from external_id/metadata/id"
+                "legacy game_videos table lacks 'url' column - will derive fallback URLs from external_id/metadata/id"
             );
         }
         // Define global fallback source once (outside row loop) so we can log it after processing
@@ -3291,14 +3291,14 @@ impl ImportContext {
             pending_links = 0;
         }
         prog.finish();
-        info!(processed_rows = total_rows, fallback_source=%source_fallback, "video media processed (as game_media) — batch upserts executed");
+        info!(processed_rows = total_rows, fallback_source=%source_fallback, "video media processed (as game_media) - batch upserts executed");
         Ok(())
     }
 
     // -------- Giant Bomb media ingestion (images) --------
     async fn import_giantbomb_images(&mut self) -> Result<()> {
         if self.is_stage_done("gb_images").await? {
-            info!("stage gb_images:done — skipping import");
+            info!("stage gb_images:done - skipping import");
             return Ok(());
         }
         // Chunked resume: use durable checkpoint to continue from last processed legacy id
@@ -3623,7 +3623,7 @@ impl ImportContext {
         if total_rows == 0 {
             // No rows returned beyond resume_min_id → stage complete
             self.mark_stage_done("gb_images").await?;
-            tracing::info!(resume_min_id, "gb_images: no more rows — stage marked done");
+            tracing::info!(resume_min_id, "gb_images: no more rows - stage marked done");
         } else {
             self.save_checkpoint("gb_images_id", last_id_seen).await?;
             tracing::info!(
@@ -3647,7 +3647,7 @@ impl ImportContext {
     // -------- Giant Bomb media ingestion (videos) --------
     async fn import_giantbomb_videos(&mut self) -> Result<()> {
         if self.is_stage_done("gb_videos").await? {
-            info!("stage gb_videos:done — skipping import");
+            info!("stage gb_videos:done - skipping import");
             return Ok(());
         }
 
@@ -3908,7 +3908,7 @@ impl ImportContext {
 
     async fn import_video_game_sources(&mut self) -> Result<()> {
         if self.is_stage_done("video_game_sources").await? {
-            info!("stage video_game_sources:done — skipping import");
+            info!("stage video_game_sources:done - skipping import");
             return Ok(());
         }
         info!("importing legacy video_game_sources → providers");

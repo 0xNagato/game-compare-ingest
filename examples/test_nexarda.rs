@@ -12,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
     println!("==============================");
 
     let provider = NexardaProvider::new(None, Some(15))?;
-    println!("✅ NexardaProvider initialized");
+    println!("[ok] NexardaProvider initialized");
     println!("   • Base URL: https://www.nexarda.com/api/v3");
     println!("   • Timeout: 15 seconds");
     println!("   • HTTP client: Configured\n");
@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let response = provider.fetch_deals(empty_options).await?;
-    println!("✅ Empty products handled gracefully");
+    println!("[ok] Empty products handled gracefully");
     println!("   • Result count: {}", response.results.len());
     println!(
         "   • Meta provider: {}",
@@ -60,10 +60,10 @@ async fn main() -> anyhow::Result<()> {
         if path.exists() {
             if let Ok(metadata) = fs::metadata(path) {
                 let size_mb = metadata.len() as f64 / (1024.0 * 1024.0);
-                println!("✅ Found: {} ({:.2} MB)", path_str, size_mb);
+                println!("[ok] Found: {} ({:.2} MB)", path_str, size_mb);
             }
         } else {
-            println!("⚠️  Not found: {}", path_str);
+            println!("[warn]  Not found: {}", path_str);
         }
     }
     println!();
@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
                 match serde_json::from_str::<Value>(&content) {
                     Ok(root) => {
                         if let Some(games) = root.get("games").and_then(|v| v.as_array()) {
-                            println!("✅ JSON catalogue parsed successfully");
+                            println!("[ok] JSON catalogue parsed successfully");
                             println!("   • Format: {{success, code, message, games: [...]}}");
                             println!("   • Total games: {}", games.len());
 
@@ -109,16 +109,16 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                         } else {
-                            println!("❌ No 'games' array found in JSON");
+                            println!("[error] No 'games' array found in JSON");
                         }
                     }
                     Err(e) => {
-                        println!("❌ Failed to parse JSON: {}", e);
+                        println!("[error] Failed to parse JSON: {}", e);
                     }
                 }
             }
             Err(e) => {
-                println!("❌ Failed to read JSON file: {}", e);
+                println!("[error] Failed to read JSON file: {}", e);
             }
         }
     }
@@ -132,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
         match fs::read_to_string("nexarda_product_catalogue.json.ndjson") {
             Ok(content) => {
                 let lines: Vec<&str> = content.lines().collect();
-                println!("✅ NDJSON catalogue found");
+                println!("[ok] NDJSON catalogue found");
                 println!("   • Total lines (games): {}", lines.len());
 
                 // Parse first 3 lines
@@ -162,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("   • Successfully parsed: {}/3", parsed);
             }
             Err(e) => {
-                println!("❌ Failed to read NDJSON file: {}", e);
+                println!("[error] Failed to read NDJSON file: {}", e);
             }
         }
     }
@@ -197,7 +197,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    println!("✅ Sample game structure:");
+    println!("[ok] Sample game structure:");
     println!("   • Title: {}", sample_game.get("title").unwrap());
     println!("   • Slug: {}", sample_game.get("slug").unwrap());
     println!("   • Platform: {}", sample_game.get("platform").unwrap());
@@ -222,11 +222,11 @@ async fn main() -> anyhow::Result<()> {
     let api_key = std::env::var("NEXARDA_API_KEY").ok();
 
     if api_key.is_some() {
-        println!("✅ NEXARDA_API_KEY environment variable found");
+        println!("[ok] NEXARDA_API_KEY environment variable found");
         println!("   • API credentials: Present");
         println!("   • Ready for live API calls");
     } else {
-        println!("⚠️  NEXARDA_API_KEY not set");
+        println!("[warn]  NEXARDA_API_KEY not set");
         println!("   • Live API calls will fail without API key");
         println!("   • Set: export NEXARDA_API_KEY=your_key");
         println!("   • Catalogue file ingestion will work without API key");
@@ -237,7 +237,7 @@ async fn main() -> anyhow::Result<()> {
     println!("Test 8: Ingestion Modes Summary");
     println!("===============================");
 
-    println!("✅ Nexarda client supports two modes:\n");
+    println!("[ok] Nexarda client supports two modes:\n");
 
     println!("Mode 1: Real-time API Ingestion (nexarda_ingest binary)");
     println!("   • Requires: NEXARDA_API_KEY environment variable");
@@ -259,18 +259,18 @@ async fn main() -> anyhow::Result<()> {
     println!("     - Features: Resume-after offset, batch control");
     println!();
 
-    println!("✅ Nexarda client test complete!");
-    println!("   • Initialization: ✅ Working");
-    println!("   • Options handling: ✅ Working");
-    println!("   • Catalogue detection: ✅ Files available");
-    println!("   • JSON parsing: ✅ Structure validated");
-    println!("   • NDJSON parsing: ✅ Streaming ready");
+    println!("[ok] Nexarda client test complete!");
+    println!("   • Initialization: [ok] Working");
+    println!("   • Options handling: [ok] Working");
+    println!("   • Catalogue detection: [ok] Files available");
+    println!("   • JSON parsing: [ok] Structure validated");
+    println!("   • NDJSON parsing: [ok] Streaming ready");
     println!(
         "   • API integration: {} (API key {})",
         if api_key.is_some() {
-            "✅ Ready"
+            "[ok] Ready"
         } else {
-            "⚠️  Pending"
+            "[warn]  Pending"
         },
         if api_key.is_some() {
             "configured"

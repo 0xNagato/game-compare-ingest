@@ -188,7 +188,7 @@ async fn simple_run_migrations(
         info!("video_game_ratings_by_locale table present after migrations");
     } else {
         error!(
-            "video_game_ratings_by_locale table MISSING after migrations — check 0009 migration"
+            "video_game_ratings_by_locale table MISSING after migrations - check 0009 migration"
         );
     }
     Ok(())

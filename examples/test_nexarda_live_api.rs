@@ -11,13 +11,13 @@ async fn main() -> anyhow::Result<()> {
     let api_key = std::env::var("NEXARDA_API_KEY").ok();
 
     if api_key.is_none() {
-        println!("❌ NEXARDA_API_KEY not set");
+        println!("[error] NEXARDA_API_KEY not set");
         println!("   Set the API key: export NEXARDA_API_KEY=your_key");
         println!("   Then run again.");
         return Ok(());
     }
 
-    println!("✅ API Key found");
+    println!("[ok] API Key found");
     println!(
         "   • Length: {} characters",
         api_key.as_ref().unwrap().len()
@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     println!("==============================");
 
     let provider = NexardaProvider::new(None, Some(30))?;
-    println!("✅ Provider initialized with API timeout: 30 seconds\n");
+    println!("[ok] Provider initialized with API timeout: 30 seconds\n");
 
     // Test 1: Sample product (game ID from API docs if available)
     println!("Test 2: Test Product Configuration");
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
         ],
     };
 
-    println!("✅ Test product configured:");
+    println!("[ok] Test product configured:");
     println!("   • ID: {}", test_product.id);
     println!("   • Type: {}", test_product.r#type);
     println!(
@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
 
     match provider.fetch_deals(options).await {
         Ok(response) => {
-            println!("✅ API call successful");
+            println!("[ok] API call successful");
             println!(
                 "   • Response provider: {}",
                 response.meta.get("provider").unwrap_or(&json!("unknown"))
@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
             println!();
 
             if response.results.is_empty() {
-                println!("⚠️  No deals returned for test product");
+                println!("[warn]  No deals returned for test product");
                 println!("   This is normal if the product ID is not in Nexarda database");
                 println!();
             } else {
@@ -138,13 +138,13 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
 
-            println!("\n✅ API Integration Status: WORKING");
-            println!("   • Authentication: ✅ Valid");
-            println!("   • Request/Response: ✅ Working");
-            println!("   • Response format: ✅ Correct");
+            println!("\n[ok] API Integration Status: WORKING");
+            println!("   • Authentication: [ok] Valid");
+            println!("   • Request/Response: [ok] Working");
+            println!("   • Response format: [ok] Correct");
         }
         Err(e) => {
-            println!("❌ API call failed");
+            println!("[error] API call failed");
             println!("   Error: {}", e);
             println!();
             println!("Possible causes:");
@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
     println!("\nTest 5: Live API Configuration Summary");
     println!("====================================");
 
-    println!("✅ Real-time API ingestion is available via:");
+    println!("[ok] Real-time API ingestion is available via:");
     println!("   • Binary: nexarda_ingest");
     println!("   • Requires: NEXARDA_API_KEY environment variable");
     println!("   • Supports: Multi-product, multi-region pricing");
@@ -176,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
     println!("   • DATABASE_URL: PostgreSQL connection string");
     println!();
 
-    println!("✅ Nexarda Live API test complete!");
+    println!("[ok] Nexarda Live API test complete!");
 
     Ok(())
 }

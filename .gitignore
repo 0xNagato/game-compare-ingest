@@ -20,3 +20,7 @@ backups/
 database.sqlite
 *.ndjson
 brain.json
+
+# macOS and editor leftovers
+.DS_Store
+*.bak

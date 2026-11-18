@@ -181,8 +181,8 @@ Indexing: migration 0481 adds a parent-only index `(provider_item_id, recorded_a
 
 For fast, even sampling in charts, use the bucketed views created in migration 0482:
 
-- `prices_hourly_last_by_source` — latest point per hour and provider
-- `prices_daily_last_by_source` — latest point per day and provider
+- `prices_hourly_last_by_source` - latest point per hour and provider
+- `prices_daily_last_by_source` - latest point per day and provider
 
 Examples:
 
@@ -380,17 +380,17 @@ Notes:
 
 ### Findings
 
-1. **Provider concentration** — `provider_id = 17` (PlayStation Store) accounted for 100% of the sampled 940 price records. Xbox, Steam, and catalogue providers did not appear, indicating our ingestion or sampling window is effectively PlayStation-only right now.
-2. **Currency outlier (currency_id = 10 / RUB)** — All high-value rows belonged to currency_id 10, mapping to Russian ruble. The max `amount_minor` reached `712900` (≈7 129 RUB). We need to confirm whether this represents an ultra-premium SKU or a parsing/FX defect.
-3. **Missing provider item regions** — `provider_items.region_code` was NULL for all 172 sampled provider items, preventing jurisdiction analytics without joining through offers. This appears systemic rather than sampling noise.
-4. **Offers metadata empty** — `offers.metadata` returned NULL for all 5 859 offers evaluated, so storefront payload details are not preserved for downstream diagnostics.
+1. **Provider concentration** - `provider_id = 17` (PlayStation Store) accounted for 100% of the sampled 940 price records. Xbox, Steam, and catalogue providers did not appear, indicating our ingestion or sampling window is effectively PlayStation-only right now.
+2. **Currency outlier (currency_id = 10 / RUB)** - All high-value rows belonged to currency_id 10, mapping to Russian ruble. The max `amount_minor` reached `712900` (≈7 129 RUB). We need to confirm whether this represents an ultra-premium SKU or a parsing/FX defect.
+3. **Missing provider item regions** - `provider_items.region_code` was NULL for all 172 sampled provider items, preventing jurisdiction analytics without joining through offers. This appears systemic rather than sampling noise.
+4. **Offers metadata empty** - `offers.metadata` returned NULL for all 5 859 offers evaluated, so storefront payload details are not preserved for downstream diagnostics.
 
 ### Follow-up actions
 
-- **Broaden sampling** — schedule recurring stratified samples (per-provider/per-currency) so dashboards can surface non-PlayStation coverage gaps automatically.
-- **Populate provider regions** — update ingestion to hydrate `provider_items.region_code` (or retire the column if redundant) and backfill existing NULLs.
-- **Persist offer metadata** — ensure source payloads write into `offers.metadata`; design a safe JSON schema (even `{}`) so diagnostics have something to interrogate.
-- **Investigate RUB spike** — review the raw PlayStation payload for the high RUB amount and confirm currency/discount maths before alerting product.
+- **Broaden sampling** - schedule recurring stratified samples (per-provider/per-currency) so dashboards can surface non-PlayStation coverage gaps automatically.
+- **Populate provider regions** - update ingestion to hydrate `provider_items.region_code` (or retire the column if redundant) and backfill existing NULLs.
+- **Persist offer metadata** - ensure source payloads write into `offers.metadata`; design a safe JSON schema (even `{}`) so diagnostics have something to interrogate.
+- **Investigate RUB spike** - review the raw PlayStation payload for the high RUB amount and confirm currency/discount maths before alerting product.
 
 Track remediation status in `.todo/tasks.json`; once fixes land, rerun the sampling queries and append the comparative metrics here.
 
@@ -464,12 +464,12 @@ Capture ingest run metadata in `provider_ingest_runs` (extend columns if needed 
 
 `ps_long_test` now supports queue-backed scheduling and workers through [PGMQ](https://github.com/tembo-io/pgmq). Configure behaviour with the following environment keys:
 
-- `PS_QUEUE_MODE` — `direct` (default), `scheduler`, or `worker`.
-- `PS_QUEUE_NAME` — queue identifier (defaults to `psstore_ingest`).
-- `PS_QUEUE_VT_SECS` — visibility timeout for workers (default 180s).
-- `PS_QUEUE_POLL_SECS` — worker idle sleep when no jobs are ready (default 5s).
-- `PS_QUEUE_MAX_RETRIES` — archive threshold after repeated failures (`0` disables auto-archive).
-- `SUPABASE_DB_SESSION_URL` — direct session DSN (port 5432) with no `statement_cache_capacity` query params for LISTEN connections.
+- `PS_QUEUE_MODE` - `direct` (default), `scheduler`, or `worker`.
+- `PS_QUEUE_NAME` - queue identifier (defaults to `psstore_ingest`).
+- `PS_QUEUE_VT_SECS` - visibility timeout for workers (default 180s).
+- `PS_QUEUE_POLL_SECS` - worker idle sleep when no jobs are ready (default 5s).
+- `PS_QUEUE_MAX_RETRIES` - archive threshold after repeated failures (`0` disables auto-archive).
+- `SUPABASE_DB_SESSION_URL` - direct session DSN (port 5432) with no `statement_cache_capacity` query params for LISTEN connections.
 
 Bootstrap the queue (idempotent) alongside migrations:
 
@@ -540,25 +540,25 @@ A single binary `ingest_worker` handles queue-backed ingestion for multiple prov
 
 Environment keys:
 
-- `SUPABASE_DB_URL` or `DATABASE_URL` — Postgres DSN (PgBouncer transaction pool is OK)
-- `SUPABASE_DB_SESSION_URL` — direct session DSN for LISTEN (5432, no statement cache param)
-- `INGEST_QUEUE_NAME` — queue identifier (e.g., `steam_catalog`, `ps_prices`)
-- `INGEST_QUEUE_VT_SECS` — worker visibility timeout (e.g., 60–180)
-- `INGEST_QUEUE_POLL_SECS` — idle sleep when no jobs (e.g., 1–5)
-- `INGEST_QUEUE_MAX_RETRIES` — archive after N failures (0 disables auto-archive)
-- `INGEST_QUEUE_RETRY_BASE_SECS` — backoff base (default 5)
-- `INGEST_QUEUE_RETRY_MAX_SECS` — cap for backoff (default 300)
-- `WORKER_HTTP_ADDR` — optional, bind address for control API (e.g., `127.0.0.1:8082`)
+- `SUPABASE_DB_URL` or `DATABASE_URL` - Postgres DSN (PgBouncer transaction pool is OK)
+- `SUPABASE_DB_SESSION_URL` - direct session DSN for LISTEN (5432, no statement cache param)
+- `INGEST_QUEUE_NAME` - queue identifier (e.g., `steam_catalog`, `ps_prices`)
+- `INGEST_QUEUE_VT_SECS` - worker visibility timeout (e.g., 60–180)
+- `INGEST_QUEUE_POLL_SECS` - idle sleep when no jobs (e.g., 1–5)
+- `INGEST_QUEUE_MAX_RETRIES` - archive after N failures (0 disables auto-archive)
+- `INGEST_QUEUE_RETRY_BASE_SECS` - backoff base (default 5)
+- `INGEST_QUEUE_RETRY_MAX_SECS` - cap for backoff (default 300)
+- `WORKER_HTTP_ADDR` - optional, bind address for control API (e.g., `127.0.0.1:8082`)
 
 Recommended queues (one process per queue for clear isolation and tuning):
 
-- `steam_catalog` — Steam catalogue/media
-- `ps_catalog` — PlayStation catalogue
-- `ps_prices` — PlayStation prices
-- `ps_ratings` — PlayStation ratings
-- `igdb_catalog` — IGDB crawler/ingest
-- `xbox_catalog` — Microsoft/Xbox store
-- `nexarda_catalog` — Nexarda catalogue/pricing
+- `steam_catalog` - Steam catalogue/media
+- `ps_catalog` - PlayStation catalogue
+- `ps_prices` - PlayStation prices
+- `ps_ratings` - PlayStation ratings
+- `igdb_catalog` - IGDB crawler/ingest
+- `xbox_catalog` - Microsoft/Xbox store
+- `nexarda_catalog` - Nexarda catalogue/pricing
 
 The worker always emits `NOTIFY ingest_queue, '<queue_name>'` after enqueue and listens on `LISTEN ingest_queue` for immediate wake-ups.
 
@@ -759,10 +759,10 @@ Consider timescaledb for advanced compression (not required currently).
 
 The legacy catalogue importer (`src/bin/import_sqlite.rs`) supports a few environment knobs for safety and throughput:
 
-- VIDEO_GAME_UPDATE_CHUNK — max rows per batched UPDATE of `video_games` (default 500). Example: `VIDEO_GAME_UPDATE_CHUNK=1000`.
-- PROGRESS_INTERVAL — progress log cadence in rows (defaults to the update chunk).
-- SQLITE_PERF — enable read-optimized PRAGMAs (default 1/true). Set `SQLITE_PERF=0` to disable.
-- SQLITE_PERF_SAFE — use a conservative PRAGMA set (no journal/locking changes). Example: `SQLITE_PERF_SAFE=1`.
+- VIDEO_GAME_UPDATE_CHUNK - max rows per batched UPDATE of `video_games` (default 500). Example: `VIDEO_GAME_UPDATE_CHUNK=1000`.
+- PROGRESS_INTERVAL - progress log cadence in rows (defaults to the update chunk).
+- SQLITE_PERF - enable read-optimized PRAGMAs (default 1/true). Set `SQLITE_PERF=0` to disable.
+- SQLITE_PERF_SAFE - use a conservative PRAGMA set (no journal/locking changes). Example: `SQLITE_PERF_SAFE=1`.
 
 Notes:
 - The importer now enforces `PRAGMA query_only=ON` when SQLITE_PERF is enabled (both safe and aggressive sets) to harden the SQLite connection as read-only.

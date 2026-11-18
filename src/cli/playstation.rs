@@ -554,14 +554,14 @@ async fn try_enqueue_worker(task: &str) -> Result<bool> {
         }
         Ok(resp) => {
             eprintln!(
-                "PlayStation {task} worker enqueue failed with status {} — falling back to direct execution",
+                "PlayStation {task} worker enqueue failed with status {} - falling back to direct execution",
                 resp.status()
             );
             Ok(false)
         }
         Err(err) => {
             eprintln!(
-                "PlayStation {task} worker enqueue errored ({err}) — falling back to direct execution"
+                "PlayStation {task} worker enqueue errored ({err}) - falling back to direct execution"
             );
             Ok(false)
         }

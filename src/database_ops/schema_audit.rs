@@ -96,7 +96,7 @@ pub async fn run(cfg: DbSchemaAuditConfig) -> Result<()> {
     let mut out = String::new();
     writeln!(
         out,
-        "SCHEMA AUDIT (public) — total tables: {}",
+        "SCHEMA AUDIT (public) - total tables: {}",
         tables.len()
     )
     .ok();

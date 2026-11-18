@@ -10,9 +10,9 @@ Two comprehensive fixes have been prepared:
 
 ## Implementation Files
 
-- ✅ `INGESTION_FINDINGS.md` - Detailed analysis and findings
-- ✅ `src/database_ops/ensure_video_game_enhanced.rs` - New enhanced function
-- ✅ `src/database_ops/giantbomb_image_fix.rs` - GiantBomb image fix with examples
+- `INGESTION_FINDINGS.md` - Detailed analysis and findings
+- `src/database_ops/ensure_video_game_enhanced.rs` - New enhanced function
+- `src/database_ops/giantbomb_image_fix.rs` - GiantBomb image fix with examples
 
 ---
 
@@ -21,11 +21,11 @@ Two comprehensive fixes have been prepared:
 ### What It Does
 
 The new `ensure_video_game_enhanced()` function:
-- ✅ Dynamically detects ALL available columns in the `video_games` table
-- ✅ Populates created_at/updated_at timestamps when columns exist
-- ✅ Accepts optional metadata struct with 12+ additional fields
-- ✅ Builds INSERT query dynamically based on available data
-- ✅ Maintains backward compatibility with minimal and full schemas
+- Dynamically detects ALL available columns in the `video_games` table
+- Populates created_at/updated_at timestamps when columns exist
+- Accepts optional metadata struct with 12+ additional fields
+- Builds INSERT query dynamically based on available data
+- Maintains backward compatibility with minimal and full schemas
 
 ### Integration Steps
 
@@ -164,10 +164,10 @@ After testing, you can optionally replace the old `ensure_video_game()` function
 ### What It Does
 
 The new implementation:
-- ✅ Extracts ALL three URL variants from GiantBomb responses (original, super, small)
-- ✅ Stores them in structured JSON in `provider_data`
-- ✅ Migration 0492 automatically extracts them to dedicated columns
-- ✅ Frontend can use responsive image loading (small for mobile, original for desktop)
+- Extracts ALL three URL variants from GiantBomb responses (original, super, small)
+- Stores them in structured JSON in `provider_data`
+- Migration 0492 automatically extracts them to dedicated columns
+- Frontend can use responsive image loading (small for mobile, original for desktop)
 
 ### Integration Steps
 
@@ -512,13 +512,13 @@ RUST_LOG=debug cargo run --bin gc -- ps-store-detail CUSA12345-00 2>&1 | tee ing
 
 Both fixes are ready for integration:
 
-✅ **Fix 1: ensure_video_game_enhanced**
+**Fix 1: ensure_video_game_enhanced**
 - New file: `src/database_ops/ensure_video_game_enhanced.rs`
 - Impact: Comprehensive column population
 - Risk: Low (backward compatible, optional metadata)
 - Effort: Medium (update 10-15 call sites)
 
-✅ **Fix 2: GiantBomb Multi-Resolution Images**
+**Fix 2: GiantBomb Multi-Resolution Images**
 - Changes: Two code blocks in `giantbomb/ingest.rs`
 - Impact: All three URL variants stored
 - Risk: Very Low (same database structure, just better data)

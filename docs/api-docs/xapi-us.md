@@ -1,4 +1,4 @@
-# XAPI.us — integration notes (unofficial)
+# XAPI.us - integration notes (unofficial)
 
 This document summarizes the public documentation at [xapi.us/docs](https://xapi.us/docs) for use in this repo.
 

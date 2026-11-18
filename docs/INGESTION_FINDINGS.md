@@ -13,23 +13,23 @@ Analysis of the gc binary and database schema alignment reveals two critical iss
 **Function:** `src/database_ops/ingest_providers.rs:2372` - `ensure_video_game()`
 
 **Currently Inserted:**
-- `title_id` ✓
-- `platform_id` ✓
-- `edition` ✓ (optional)
+- `title_id` 
+- `platform_id` 
+- `edition` (optional)
 
 **Missing Columns:**
-- `created_at` ❌ (has DEFAULT now() in schema, but should be explicit)
-- `updated_at` ❌ (has DEFAULT now() in schema, but should be explicit)
-- `slug` ❌ (nullable, should derive from title if available)
-- `release_date` ❌ (nullable, should populate from provider data)
-- `metadata` ❌ (nullable, should store provider metadata)
-- `display_title` ❌ (nullable, should populate from title)
-- `developer` ❌ (nullable, should populate from provider data)
-- `region_codes` ❌ (nullable, should populate from provider data)
-- `genres` ❌ (nullable, should populate from provider data)
-- `synopsis` ❌ (nullable, should populate from provider data)
-- `rating` ❌ (has DEFAULT 0)
-- `popularity_score` ❌ (has DEFAULT 0)
+- `created_at` (has DEFAULT now() in schema, but should be explicit)
+- `updated_at` (has DEFAULT now() in schema, but should be explicit)
+- `slug` (nullable, should derive from title if available)
+- `release_date` (nullable, should populate from provider data)
+- `metadata` (nullable, should store provider metadata)
+- `display_title` (nullable, should populate from title)
+- `developer` (nullable, should populate from provider data)
+- `region_codes` (nullable, should populate from provider data)
+- `genres` (nullable, should populate from provider data)
+- `synopsis` (nullable, should populate from provider data)
+- `rating` (has DEFAULT 0)
+- `popularity_score` (has DEFAULT 0)
 - `average_rating` (not in all schemas, check dynamic)
 - `rating_count` (not in all schemas, check dynamic)
 - `rating_updated_at` (not in all schemas, check dynamic)

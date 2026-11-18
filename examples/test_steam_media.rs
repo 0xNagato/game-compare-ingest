@@ -134,15 +134,15 @@ async fn main() -> anyhow::Result<()> {
                     }
 
                     println!("\n=== Media Summary ===");
-                    println!("✅ Images collected: {}", image_count);
+                    println!("[ok] Images collected: {}", image_count);
                     if let Some(movies) = data.get("movies").and_then(|v| v.as_array()) {
-                        println!("✅ Movies collected: {}", movies.len());
+                        println!("[ok] Movies collected: {}", movies.len());
                     }
                     println!(
-                        "✅ Total media types: 7+ (headers, capsules, backgrounds, screenshots, movies in multiple formats)"
+                        "[ok] Total media types: 7+ (headers, capsules, backgrounds, screenshots, movies in multiple formats)"
                     );
 
-                    println!("\n✅ Steam media collection test passed!");
+                    println!("\n[ok] Steam media collection test passed!");
                     println!("Media collected from Steam API includes:");
                     println!("  • Static assets (headers, capsules, backgrounds)");
                     println!("  • Screenshots (full + thumbnails)");
@@ -155,6 +155,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("❌ Failed to fetch media");
+    println!("[error] Failed to fetch media");
     Ok(())
 }
