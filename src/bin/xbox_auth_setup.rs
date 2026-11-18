@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
             "xbox_auth_setup: to re-authenticate, set XBOX_AUTH_SETUP_FORCE=1 and re-run"
         );
         info!(
-            "xbox_auth_setup: to validate current tokens, run: cargo run --bin xbox_xsts_smoke_test"
+            "xbox_auth_setup: to validate current tokens, run: cargo run --example xbox_xsts_smoke_test"
         );
         return Ok(());
     }
@@ -75,13 +75,13 @@ async fn main() -> Result<()> {
     match device_code_authentication().await {
         Ok(token_store) => {
             info!("");
-            info!("✓ Authentication successful!");
+            info!("[ok] Authentication successful!");
             info!("");
 
             // Save tokens
             save_token_store(&token_store).await?;
 
-            info!(token_file = %token_file, "✓ Tokens saved");
+            info!(token_file = %token_file, "[ok] Tokens saved");
             info!("");
             info!("You can now run Xbox ingestion:");
             info!("  cargo run --bin ingest run --only microsoft_store");
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
         }
         Err(e) => {
             error!("");
-            error!("✗ Authentication failed: {}", e);
+            error!("[error] Authentication failed: {}", e);
             error!("");
             error!("Common issues:");
             error!("  - You did not complete the browser/device step");

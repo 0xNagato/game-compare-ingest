@@ -343,7 +343,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
             let note = if flags.is_empty() {
                 String::new()
             } else {
-                format!(" — {}", flags.join("; "))
+                format!(" - {}", flags.join("; "))
             };
 
             writeln!(
@@ -457,7 +457,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
                 .unwrap_or_else(|| ".".to_string());
             writeln!(
                 out,
-                "    • offer #{offer_id}, offer_jurisdiction #{offer_jurisdiction_id} — {country_name} ({country_iso2}{region_label}) [{currency_code}] → {status}{last_seen}"
+                "    • offer #{offer_id}, offer_jurisdiction #{offer_jurisdiction_id} - {country_name} ({country_iso2}{region_label}) [{currency_code}] → {status}{last_seen}"
             ).ok();
         }
         println!("{}", out);
@@ -1076,7 +1076,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
             let title_suffix = if media_title.is_empty() {
                 "".to_string()
             } else {
-                format!(" — {media_title}")
+                format!(" - {media_title}")
             };
             let url_suffix = if media_url.is_empty() {
                 "".to_string()
@@ -1157,7 +1157,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
             } else {
                 format!(" [{}]", media_url)
             };
-            writeln!(out, "  {game_name} — source {source_slug}{url_suffix}").ok();
+            writeln!(out, "  {game_name} - source {source_slug}{url_suffix}").ok();
         }
         println!("{}", out);
     }
@@ -1296,7 +1296,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
             let release_date: Option<chrono::NaiveDate> = r.try_get("release_date").ok();
             writeln!(
                 out,
-                "  {} [{}]{} — {}",
+                "  {} [{}]{} - {}",
                 title,
                 platform,
                 edition
@@ -1715,7 +1715,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
             let currency_code: String = row.get("currency_code");
             writeln!(
                 out,
-                "    {game_name} — {retailer_name} [{country_code}/{currency_code}] (no price rows)"
+                "    {game_name} - {retailer_name} [{country_code}/{currency_code}] (no price rows)"
             )
             .ok();
         }
@@ -1761,7 +1761,7 @@ pub async fn run(cfg: DbCountsConfig) -> Result<()> {
             let external_id: String = row.get("external_id");
             writeln!(
                 out,
-                "    {game_name} — provider {provider_slug} (external: {external_id})"
+                "    {game_name} - provider {provider_slug} (external: {external_id})"
             )
             .ok();
         }

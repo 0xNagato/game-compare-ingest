@@ -61,7 +61,7 @@ pub async fn run_from_env() -> Result<()> {
                 }
                 Err(err) => {
                     println!(
-                        "⚠️ Failed to parse games_detailed_partial.json ({}). Starting fresh.",
+                        "[warn] Failed to parse games_detailed_partial.json ({}). Starting fresh.",
                         err
                     );
                     IndexMap::new()
@@ -122,7 +122,7 @@ pub async fn run_from_env() -> Result<()> {
                 Ok(detail) => {
                     sleep(Duration::from_millis(3600)).await;
                     println!(
-                        "[detail] ✓ Stored detail for GUID {} ({:?}).",
+                        "[detail] [ok] Stored detail for GUID {} ({:?}).",
                         summary.guid, summary.name
                     );
                     tokio::time::sleep(Duration::from_millis(1800)).await;
@@ -132,7 +132,7 @@ pub async fn run_from_env() -> Result<()> {
                         append_partial_detail("games_detailed_partial.json", &summary.guid, &detail)
                     {
                         println!(
-                            "⚠️ Failed to append partial detail for {}: {err:?}. Falling back to rewrite.",
+                            "[warn] Failed to append partial detail for {}: {err:?}. Falling back to rewrite.",
                             summary.guid
                         );
                     } else {
@@ -147,7 +147,7 @@ pub async fn run_from_env() -> Result<()> {
                             write_full_detail_map("games_detailed_partial.json", &detailed)
                         {
                             println!(
-                                "⚠️ Fallback rewrite of partial file failed after {} entries: {err:?}",
+                                "[warn] Fallback rewrite of partial file failed after {} entries: {err:?}",
                                 detailed.len()
                             );
                         }
@@ -156,7 +156,7 @@ pub async fn run_from_env() -> Result<()> {
                 Err(err) => {
                     sleep(Duration::from_millis(3600)).await;
                     println!(
-                        "⚠️ Failed to fetch detail for {} ({:?}): {err:?}",
+                        "[warn] Failed to fetch detail for {} ({:?}): {err:?}",
                         summary.guid, summary.name
                     );
                 }
@@ -165,7 +165,7 @@ pub async fn run_from_env() -> Result<()> {
             if new_detail_added {
                 if let Err(err) = write_full_detail_map("games_detailed.json", &detailed) {
                     println!(
-                        "⚠️ Failed to update full detailed file after {} entries: {err:?}",
+                        "[warn] Failed to update full detailed file after {} entries: {err:?}",
                         detailed.len()
                     );
                 }
@@ -197,7 +197,7 @@ pub async fn run_from_env() -> Result<()> {
                 all_games.extend(games);
             }
             Err(err) => {
-                println!("⚠️ Skipping platform {name} due to error: {err:?}");
+                println!("[warn] Skipping platform {name} due to error: {err:?}");
             }
         }
         println!("[summary] Completed platform {name}, waiting before next platform.");
@@ -236,7 +236,7 @@ pub async fn run_from_env() -> Result<()> {
         match fetch_game_detail(client.clone(), limiter.clone(), &semaphore, summary).await {
             Ok(detail) => {
                 println!(
-                    "[detail] ✓ Stored detail for GUID {} ({:?}).",
+                    "[detail] [ok] Stored detail for GUID {} ({:?}).",
                     summary.guid, summary.name
                 );
                 let mut appended = false;
@@ -244,7 +244,7 @@ pub async fn run_from_env() -> Result<()> {
                     append_partial_detail("games_detailed_partial.json", &summary.guid, &detail)
                 {
                     println!(
-                        "⚠️ Failed to append partial detail for {}: {err:?}. Falling back to rewrite.",
+                        "[warn] Failed to append partial detail for {}: {err:?}. Falling back to rewrite.",
                         summary.guid
                     );
                 } else {
@@ -259,7 +259,7 @@ pub async fn run_from_env() -> Result<()> {
                         write_full_detail_map("games_detailed_partial.json", &detailed)
                     {
                         println!(
-                            "⚠️ Fallback rewrite of partial file failed after {} entries: {err:?}",
+                            "[warn] Fallback rewrite of partial file failed after {} entries: {err:?}",
                             detailed.len()
                         );
                     }
@@ -267,7 +267,7 @@ pub async fn run_from_env() -> Result<()> {
             }
             Err(err) => {
                 println!(
-                    "⚠️ Failed to fetch detail for {} ({:?}): {err:?}",
+                    "[warn] Failed to fetch detail for {} ({:?}): {err:?}",
                     summary.guid, summary.name
                 );
             }
@@ -276,7 +276,7 @@ pub async fn run_from_env() -> Result<()> {
         if new_detail_added {
             if let Err(err) = write_full_detail_map("games_detailed.json", &detailed) {
                 println!(
-                    "⚠️ Failed to update full detailed file after {} entries: {err:?}",
+                    "[warn] Failed to update full detailed file after {} entries: {err:?}",
                     detailed.len()
                 );
             }
@@ -284,8 +284,8 @@ pub async fn run_from_env() -> Result<()> {
     }
 
     write_full_detail_map("games_detailed.json", &detailed)?;
-    println!("✅ Saved games summary with {} entries.", all_games.len());
-    println!("✅ Saved {} detailed games.", detailed.len());
+    println!("[ok] Saved games summary with {} entries.", all_games.len());
+    println!("[ok] Saved {} detailed games.", detailed.len());
 
     Ok(())
 }
@@ -693,7 +693,7 @@ async fn fetch_game_detail(
                 }
                 Err(err) => {
                     println!(
-                        "⚠️ Failed to fetch video API payload for video {:?}: {err:?}",
+                        "[warn] Failed to fetch video API payload for video {:?}: {err:?}",
                         video.id
                     );
                 }

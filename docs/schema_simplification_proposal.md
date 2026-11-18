@@ -1,4 +1,4 @@
-# GameCompare Schema Simplification Proposal — 2025-11-26
+# GameCompare Schema Simplification Proposal - 2025-11-26
 
 ## Objectives
 
@@ -7,14 +7,14 @@
 - Preserve historical pricing (partitioned `prices`) and jurisdiction/tax metadata while simplifying provider integration and alert evaluation.
 - Provide a phased migration playbook that can be executed safely in staging before production adoption.
 
-_Source artifacts reviewed: [`docs/schema_map_pre_overhaul.json`](schema_map_pre_overhaul.json) and [`docs/schema_reference.sql`](schema_reference.sql)._ These enumerate 71 tables, of which 50+ lack primary keys and exist purely for legacy syncs, analytics, or deprecated provider pipelines.
+_Source artifacts reviewed: `docs/schema_map_pre_overhaul.json` and `docs/schema_reference.sql` (schema dumps, not included in this repository)._ These enumerate 71 tables, of which 50+ lack primary keys and exist purely for legacy syncs, analytics, or deprecated provider pipelines.
 
 ## Current Pain Points
 
-1. **Redundant product split** — `software`, `hardware`, `sellables`, `video_game_titles`, `video_games`, and multiple provider pivot tables represent the same commercial entity. This makes ingestion pipelines fan-out across six or more tables for each SKU.
-2. **Legacy + staging bloat** — Legacy Steam/PSN/analytics tables without primary keys remain in the public schema, confusing migrations and ORM discovery.
-3. **Provider indirection** — `provider_items`, `provider_offers`, `provider_media_links`, and several queue tables fragment the ingestion state. Many could be flattened into a single `provider_mappings` table with status columns.
-4. **Laravel ergonomics** — Numerous nullable JSON columns and polymorphic pivots complicate Eloquent casting and resource transformers.
+1. **Redundant product split** - `software`, `hardware`, `sellables`, `video_game_titles`, `video_games`, and multiple provider pivot tables represent the same commercial entity. This makes ingestion pipelines fan-out across six or more tables for each SKU.
+2. **Legacy + staging bloat** - Legacy Steam/PSN/analytics tables without primary keys remain in the public schema, confusing migrations and ORM discovery.
+3. **Provider indirection** - `provider_items`, `provider_offers`, `provider_media_links`, and several queue tables fragment the ingestion state. Many could be flattened into a single `provider_mappings` table with status columns.
+4. **Laravel ergonomics** - Numerous nullable JSON columns and polymorphic pivots complicate Eloquent casting and resource transformers.
 
 ## Target Core Model
 
@@ -165,7 +165,7 @@ Partition helper (`ensure_prices_partition_for`) from the existing schema can be
 
 ## Phased Migration Skeleton
 
-### Phase 0 — Preparation (non-destructive)
+### Phase 0 - Preparation (non-destructive)
 
 ```sql
 -- 0.1 Add product_kind and populate
@@ -189,7 +189,7 @@ left join game_consoles gc on gc.product_id = vg.title_id
 on conflict do nothing;
 ```
 
-### Phase 1 — Offer & Jurisdiction Backfill
+### Phase 1 - Offer & Jurisdiction Backfill
 
 ```sql
 insert into offers (product_version_id, retailer_id, sku, is_active, metadata)
@@ -221,7 +221,7 @@ join offer_regions or_new on or_new.offer_id = oj.offer_id and or_new.jurisdicti
 on conflict (offer_region_id) do update set amount_minor = excluded.amount_minor, recorded_at = excluded.recorded_at;
 ```
 
-### Phase 2 — Provider Alignment
+### Phase 2 - Provider Alignment
 
 ```sql
 insert into providers (code, name, kind, metadata)
@@ -238,7 +238,7 @@ left join offers o_new on o_new.product_version_id = pv.id
 on conflict (provider_id, external_id) do update set payload_hash = excluded.payload_hash, metadata = excluded.metadata;
 ```
 
-### Phase 3 — Decommission Legacy Tables
+### Phase 3 - Decommission Legacy Tables
 
 - Verify new tables are serving API reads (update Laravel models/controllers).
 - Rename legacy tables with `_legacy2025` suffix (`alter table ... rename`), retain for 30 days.
@@ -254,7 +254,7 @@ Proposed Eloquent models (namespace `App\Domain`):
 | `ProductVersion` | `product_versions` | `belongsTo Product`, `belongsTo Platform`, `hasMany Offer` |
 | `Offer` | `offers` | `belongsTo ProductVersion`, `belongsTo Retailer`, `hasMany OfferRegion` |
 | `OfferRegion` | `offer_regions` | `belongsTo Offer`, `belongsTo Jurisdiction`, `belongsTo Currency`, `hasOne CurrentPrice`, `hasMany Price` |
-| `Price` | `prices` | `belongsTo OfferRegion` (partitioned table — use `withoutTimestamps`) |
+| `Price` | `prices` | `belongsTo OfferRegion` (partitioned table - use `withoutTimestamps`) |
 | `CurrentPrice` | `current_prices` | `belongsTo OfferRegion` |
 | `Provider` | `providers` | `hasMany ProviderItem`, `hasMany ProviderRun` |
 | `ProviderItem` | `provider_items` | `belongsTo Provider`, `belongsTo ProductVersion`, `belongsTo Offer` |
@@ -266,7 +266,7 @@ Laravel migration stubs can be generated with `php artisan make:migration` and t
 ## Operational Considerations
 
 - **Backups**: Take physical backups of `prices`, `offers`, `offer_jurisdictions`, `provider_*`, and `video_game_*` before Phase 1. Retain for 90 days.
-- **Runtime impact**: Partitioned inserts remain consistent. Expect additional upserts during backfill — schedule outside ingestion peak.
+- **Runtime impact**: Partitioned inserts remain consistent. Expect additional upserts during backfill - schedule outside ingestion peak.
 - **Alert recalculation**: After migrating `alerts.offer_region_id`, re-run alert threshold sync to ensure each alert points to the new region IDs.
 - **Testing**: Run Rust ingestion in dry-run mode (set `DRY_RUN=1`) against staging to ensure provider mappings continue to land in `provider_items`.
 - **Rollback**: Because legacy tables are renamed (not dropped) until Phase 3, rollback is a matter of re-pointing Laravel models to legacy tables and reversing renames.

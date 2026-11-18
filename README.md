@@ -1,10 +1,10 @@
-# game-compare-ingest ⚙️
+# game-compare-ingest
 
 High-performance **Rust** data ingestion backend for [game-compare](https://github.com/0xNagato/game-compare). Handles multi-provider game catalog sync, real-time price tracking, and media resolution across 12 data sources.
 
 ## Why Rust?
 
-The ingestion workload is write-heavy, latency-sensitive, and I/O-bound: concurrent HTTP requests to 12+ providers, batch database inserts, rate limiting, and retry logic. Rust's async ecosystem (Tokio + SQLx) delivers the throughput needed while keeping resource usage minimal — the full pipeline runs on a $10/month server.
+The ingestion workload is write-heavy, latency-sensitive, and I/O-bound: concurrent HTTP requests to 12+ providers, batch database inserts, rate limiting, and retry logic. Rust's async ecosystem (Tokio + SQLx) delivers the throughput needed while keeping resource usage minimal - the full pipeline runs on a $10/month server.
 
 ## Architecture
 
@@ -56,7 +56,7 @@ The ingestion workload is write-heavy, latency-sensitive, and I/O-bound: concurr
 
 ### Idempotent Ingestion
 
-Every write operation uses `ON CONFLICT ... DO UPDATE` patterns. Running the pipeline multiple times produces identical results — no duplicates, no corruption:
+Every write operation uses `ON CONFLICT ... DO UPDATE` patterns. Running the pipeline multiple times produces identical results - no duplicates, no corruption:
 
 ```rust
 pub async fn ensure_video_game(
@@ -82,7 +82,7 @@ prices (parent)
 ├── prices_2025_11
 └── prices_2025_12
 
-current_price (materialized latest — sub-millisecond reads)
+current_price (materialized latest - sub-millisecond reads)
 ```
 
 ### Provider Abstraction
@@ -139,6 +139,9 @@ src/
 ```
 
 ## Usage
+
+The PlayStation Store client is a separate, private crate that `Cargo.toml` expects at `./psstore_client`; the
+build needs it checked out there. One-off probes live in `examples/` (`cargo run --example <name>`).
 
 ```bash
 # Build release binary
@@ -203,7 +206,7 @@ Both applications coordinate on:
 
 ## Related
 
-- **[game-compare](https://github.com/0xNagato/game-compare)** — Laravel + React frontend (companion repo)
+- **[game-compare](https://github.com/0xNagato/game-compare)** - Laravel + React frontend (companion repo)
 
 ## License
 

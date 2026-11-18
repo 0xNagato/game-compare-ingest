@@ -702,7 +702,7 @@ async fn get_worker_logs(
     }
 }
 
-// GET /manager/logs?limit=N — aggregate logs from all configured workers
+// GET /manager/logs?limit=N - aggregate logs from all configured workers
 async fn get_all_logs(
     query: web::Query<HashMap<String, String>>,
     state: web::Data<Arc<ManagerState>>,
@@ -735,7 +735,7 @@ async fn get_all_logs(
     HttpResponse::Ok().json(payload)
 }
 
-// POST /manager/workers/{name}/restart — stop then start the worker
+// POST /manager/workers/{name}/restart - stop then start the worker
 async fn restart_worker(
     path: web::Path<(String,)>,
     state: web::Data<Arc<ManagerState>>,

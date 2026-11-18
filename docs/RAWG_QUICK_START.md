@@ -258,15 +258,15 @@ cargo run --bin ingest -- --skip xbox,failing_provider --loop-secs 3600
 ## Summary
 
 You now have:
-1. ✅ **Top games ingestion** (monthly + genres)
-2. ✅ **Retailer tracking** with minimal missing markers
-3. ✅ **Continuous unified ingest** (all providers except Xbox)
-4. ✅ **Configurable loop delays**
-5. ✅ **Database persistence** of all game/retailer data
+1. **Top games ingestion** (monthly + genres)
+2. **Retailer tracking** with minimal missing markers
+3. **Continuous unified ingest** (all providers except Xbox)
+4. **Configurable loop delays**
+5. **Database persistence** of all game/retailer data
 
 Run your continuous ingest:
 ```bash
 RAWG_MODE=all cargo run --bin ingest -- --skip xbox --loop-secs 3600
 ```
 
-This will fetch RAWG top lists and run all other providers every hour! 🚀
+This will fetch RAWG top lists and run all other providers every hour! 

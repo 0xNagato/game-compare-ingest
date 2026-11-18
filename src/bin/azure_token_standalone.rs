@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
     dotenv::dotenv().ok();
     tracing::info!("initialize tracing");
 
-    println!("\n🔐 Azure/Entra ID OAuth Token Tester");
+    println!("\nAzure/Entra ID OAuth Token Tester");
     println!("═══════════════════════════════════════════════════════════\n");
 
     let tenant_id = get_env("AZURE_TENANT_ID");
@@ -158,12 +158,12 @@ async fn main() -> Result<()> {
     // - common (not recommended for app-only)
     let tenant_id = get_env_opt("AZURE_AUTHORITY_PATH").unwrap_or_else(|| tenant_id.clone());
 
-    println!("📋 Configuration:");
+    println!("Configuration:");
     println!("  Authority: {}", tenant_id);
     println!("  Client ID: {}", client_id);
     println!("  Scope: {}\n", scope);
 
-    println!("🔄 Requesting token...");
+    println!("Requesting token...");
 
     let url = format!(
         "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to parse token response")?;
 
-    println!("\n✅ SUCCESS!");
+    println!("\n[ok] SUCCESS!");
     println!("═══════════════════════════════════════════════════════════");
     println!("Token Type: {}", token_data.token_type);
     println!(

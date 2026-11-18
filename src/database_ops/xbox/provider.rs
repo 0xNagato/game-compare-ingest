@@ -476,7 +476,7 @@ impl XboxProvider {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
                 attempts.push(format!(
-                    "{} => {} — {}",
+                    "{} => {} - {}",
                     url,
                     status,
                     Self::truncate_log_body(&body)
@@ -559,7 +559,7 @@ impl XboxProvider {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(anyhow!(
-                "category {} ({}): request failed {} — {}",
+                "category {} ({}): request failed {} - {}",
                 category_id,
                 market,
                 status,
@@ -603,7 +603,7 @@ impl XboxProvider {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
                     attempts.push(format!(
-                        "{} => {} — {}",
+                        "{} => {} - {}",
                         url,
                         status,
                         Self::truncate_log_body(&body)
@@ -628,7 +628,7 @@ impl XboxProvider {
                 let status = resp2.status();
                 let body = resp2.text().await.unwrap_or_default();
                 attempts.push(format!(
-                    "{} => {} — {}",
+                    "{} => {} - {}",
                     url_v8,
                     status,
                     Self::truncate_log_body(&body)
@@ -658,7 +658,7 @@ impl XboxProvider {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
                 attempts.push(format!(
-                    "{} => {} — {}",
+                    "{} => {} - {}",
                     url,
                     status,
                     Self::truncate_log_body(&body)

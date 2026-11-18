@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(5000);
 
-    println!("🔗 Connecting to database (no prepared statements)...");
+    println!("Connecting to database (no prepared statements)...");
     let mut connect_options = PgConnectOptions::from_str(&db_url)?.statement_cache_capacity(0); // PgBouncer safe!
 
     // Ensure TLS is enabled when DSN contains sslmode=require
@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
         .connect_with(connect_options)
         .await?;
 
-    println!("✅ Connected successfully");
+    println!("[ok] Connected successfully");
 
     // Test basic query (no prepared statements + no persistence)
     let row = sqlx::query("SELECT version()")
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
         .await?;
     let version: String = row.get(0);
     println!(
-        "📊 PostgreSQL: {}",
+        "PostgreSQL: {}",
         version
             .split_whitespace()
             .take(2)
@@ -57,24 +57,24 @@ async fn main() -> Result<()> {
     .fetch_one(&pool)
     .await?;
     let schema_count: i64 = row.get(0);
-    println!("📋 Tables in gamecompare schema: {}", schema_count);
+    println!("Tables in gamecompare schema: {}", schema_count);
 
     if schema_count == 0 {
-        println!("⚠️  No tables found in gamecompare schema!");
+        println!("[warn]  No tables found in gamecompare schema!");
         return Ok(());
     }
 
-    println!("📖 Reading JSON file: {}", path);
+    println!("Reading JSON file: {}", path);
     let raw = fs::read_to_string(&path)?;
     let v: Value = serde_json::from_str(&raw)?;
 
-    println!("🎮 Starting ingest (limit: {})...", limit);
+    println!("Starting ingest (limit: {})...", limit);
 
     let mut count = 0;
 
     match v {
         Value::Object(map) => {
-            println!("📦 Found object with {} keys", map.len());
+            println!("Found object with {} keys", map.len());
 
             for (idx, (guid, val)) in map.into_iter().enumerate() {
                 if count >= limit {
@@ -90,13 +90,13 @@ async fn main() -> Result<()> {
                         continue;
                     }
 
-                    println!("\n🔧 Processing #{}: {}", idx + 1, name);
+                    println!("\nProcessing #{}: {}", idx + 1, name);
 
                     // Start explicit transaction
                     let mut tx = pool.begin().await?;
 
                     // 1. Ensure provider
-                    println!("  📌 Ensuring provider...");
+                    println!("  Ensuring provider...");
                     let provider_id: i64 = match sqlx::query(
                         "SELECT id FROM providers WHERE name = $1",
                     )
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
                     {
                         Some(row) => {
                             let id: i64 = row.get("id");
-                            println!("    ✓ Provider exists: {}", id);
+                            println!("    [ok] Provider exists: {}", id);
                             id
                         }
                         None => {
@@ -119,13 +119,13 @@ async fn main() -> Result<()> {
                                 .bind("gb")
                                 .fetch_one(&mut *tx).await?;
                             let id: i64 = row.get("id");
-                            println!("    ✓ Provider created: {}", id);
+                            println!("    [ok] Provider created: {}", id);
                             id
                         }
                     };
 
                     // 2. Ensure platform
-                    println!("  📌 Ensuring platform...");
+                    println!("  Ensuring platform...");
                     let platform_id: i64 =
                         match sqlx::query("SELECT id FROM platforms WHERE name = $1")
                             .bind("PC")
@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
                         {
                             Some(row) => {
                                 let id: i64 = row.get("id");
-                                println!("    ✓ Platform exists: {}", id);
+                                println!("    [ok] Platform exists: {}", id);
                                 id
                             }
                             None => {
@@ -146,13 +146,13 @@ async fn main() -> Result<()> {
                             .fetch_one(&mut *tx)
                             .await?;
                                 let id: i64 = row.get("id");
-                                println!("    ✓ Platform created: {}", id);
+                                println!("    [ok] Platform created: {}", id);
                                 id
                             }
                         };
 
                     // 3. Ensure product
-                    println!("  📌 Ensuring product...");
+                    println!("  Ensuring product...");
                     let slug = name.to_lowercase().replace(" ", "-");
                     let row = sqlx
                         ::query(
@@ -165,10 +165,10 @@ async fn main() -> Result<()> {
                         .bind("software")
                         .fetch_one(&mut *tx).await?;
                     let product_id: i64 = row.get("id");
-                    println!("    ✓ Product: {}", product_id);
+                    println!("    [ok] Product: {}", product_id);
 
                     // 4. Ensure software row
-                    println!("  📌 Ensuring software...");
+                    println!("  Ensuring software...");
                     let _ = sqlx
                         ::query(
                             "INSERT INTO software (video_game_id) VALUES ($1) ON CONFLICT (video_game_id) DO NOTHING"
@@ -177,7 +177,7 @@ async fn main() -> Result<()> {
                         .execute(&mut *tx).await?;
 
                     // 5. Ensure video_game_title
-                    println!("  📌 Ensuring title...");
+                    println!("  Ensuring title...");
                     let row = sqlx
                         ::query(
                             "INSERT INTO video_game_titles (video_game_id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (video_game_id) DO UPDATE SET name = EXCLUDED.name RETURNING id"
@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
                         .bind(&slug)
                         .fetch_one(&mut *tx).await?;
                     let title_id: i64 = row.get("id");
-                    println!("    ✓ Title: {}", title_id);
+                    println!("    [ok] Title: {}", title_id);
 
                     // 5b. Update title metadata (summary, primary image, minimal source tag)
                     let summary: Option<&str> = obj.get("description").and_then(|d| d.as_str());
@@ -207,7 +207,7 @@ async fn main() -> Result<()> {
                         .execute(&mut *tx).await?;
 
                     // 6. Ensure video_game
-                    println!("  📌 Ensuring video game...");
+                    println!("  Ensuring video game...");
                     let _vg_id: i64 = match
                         sqlx
                             ::query(
@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
                     {
                         Some(row) => {
                             let id: i64 = row.get("id");
-                            println!("    ✓ Video game exists: {}", id);
+                            println!("    [ok] Video game exists: {}", id);
                             id
                         }
                         None => {
@@ -231,13 +231,13 @@ async fn main() -> Result<()> {
                                 .bind(platform_id)
                                 .fetch_one(&mut *tx).await?;
                             let id: i64 = row.get("id");
-                            println!("    ✓ Video game created: {}", id);
+                            println!("    [ok] Video game created: {}", id);
                             id
                         }
                     };
 
                     // 7. Provider item
-                    println!("  📌 Ensuring provider item...");
+                    println!("  Ensuring provider item...");
                     let video_game_source_id: i64 = match
                         sqlx
                             ::query(
@@ -249,7 +249,7 @@ async fn main() -> Result<()> {
                     {
                         Some(row) => {
                             let id: i64 = row.get("id");
-                            println!("    ✓ Provider item exists: {}", id);
+                            println!("    [ok] Provider item exists: {}", id);
                             id
                         }
                         None => {
@@ -262,13 +262,13 @@ async fn main() -> Result<()> {
                                 .bind(&payload)
                                 .fetch_one(&mut *tx).await?;
                             let id: i64 = row.get("id");
-                            println!("    ✓ Provider item created: {}", id);
+                            println!("    [ok] Provider item created: {}", id);
                             id
                         }
                     };
 
                     // 8. Link title to provider item (source mapping)
-                    println!("  📌 Linking source mapping...");
+                    println!("  Linking source mapping...");
                     let _ = sqlx
                         ::query(
                             "INSERT INTO video_game_title_sources (title_id, video_game_source_id) VALUES ($1, $2) ON CONFLICT (video_game_source_id) DO NOTHING"
@@ -278,24 +278,24 @@ async fn main() -> Result<()> {
                         .execute(&mut *tx).await?;
 
                     // Commit transaction
-                    println!("  💾 Committing transaction...");
+                    println!("  Committing transaction...");
                     tx.commit().await?;
-                    println!("  ✅ Transaction committed successfully!");
+                    println!("  [ok] Transaction committed successfully!");
 
                     count += 1;
                 }
             }
         }
         Value::Array(items) => {
-            println!("📦 Found array with {} items", items.len());
+            println!("Found array with {} items", items.len());
             // Similar handling for array...
         }
         _ => {
-            println!("⚠️  Unexpected JSON structure");
+            println!("[warn]  Unexpected JSON structure");
         }
     }
 
-    println!("\n✨ Ingest complete! Processed {} titles", count);
+    println!("\nIngest complete! Processed {} titles", count);
 
     // Verify data
     let row = sqlx::query("SELECT COUNT(*) FROM video_game_titles")
@@ -310,7 +310,7 @@ async fn main() -> Result<()> {
         .fetch_one(&pool).await?;
     let provider_item_count: i64 = row.get(0);
 
-    println!("\n📊 Database verification:");
+    println!("\nDatabase verification:");
     println!("  • Total video_game_titles: {}", title_count);
     println!("  • GiantBomb provider_items: {}", provider_item_count);
 

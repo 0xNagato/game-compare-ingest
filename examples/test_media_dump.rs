@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("{:?}", first.genres);
             }
 
-            println!("\n✅ Media collection verification complete!");
+            println!("\n[ok] Media collection verification complete!");
             println!("Media is extensively collected with:");
             println!("  • Raw URL lists for quick access");
             println!("  • Structured media objects with metadata");

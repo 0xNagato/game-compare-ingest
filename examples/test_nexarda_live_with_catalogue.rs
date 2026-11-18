@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
 
     let raw = fs::read_to_string("nexarda_product_catalogue.json")?;
     let cat: CatalogueRoot = serde_json::from_str(&raw)?;
-    println!("✅ Catalogue loaded: {} games\n", cat.games.len());
+    println!("[ok] Catalogue loaded: {} games\n", cat.games.len());
 
     // Select test products (pick 3 with diverse pricing)
     let test_products: Vec<_> = cat
@@ -112,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
     // Check API key
     let api_key = std::env::var("NEXARDA_API_KEY").ok();
     if api_key.is_none() {
-        println!("❌ NEXARDA_API_KEY not set");
+        println!("[error] NEXARDA_API_KEY not set");
         return Ok(());
     }
 
@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
 
     match provider.fetch_deals(options).await {
         Ok(response) => {
-            println!("✅ API call successful");
+            println!("[ok] API call successful");
             println!("   • Results: {}", response.results.len());
             println!(
                 "   • Generated: {}",
@@ -154,7 +154,7 @@ async fn main() -> anyhow::Result<()> {
             println!();
 
             if response.results.is_empty() {
-                println!("⚠️  No results returned");
+                println!("[warn]  No results returned");
             } else {
                 println!("Test 4: Real Deal Response Analysis");
                 println!("==================================");
@@ -183,9 +183,9 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 println!("\n=== Deal Summary ===");
-                println!("✅ Total deals retrieved: {}", total_deals);
+                println!("[ok] Total deals retrieved: {}", total_deals);
                 println!(
-                    "✅ Stores found: {} ({})",
+                    "[ok] Stores found: {} ({})",
                     stores_found.len(),
                     stores_found
                         .iter()
@@ -195,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
                         .join(", ")
                 );
                 println!(
-                    "✅ Currencies: {} ({})",
+                    "[ok] Currencies: {} ({})",
                     currencies_found.len(),
                     currencies_found
                         .iter()
@@ -204,7 +204,7 @@ async fn main() -> anyhow::Result<()> {
                         .join(", ")
                 );
                 println!(
-                    "✅ Regions: {} ({})",
+                    "[ok] Regions: {} ({})",
                     regions_found.len(),
                     regions_found.iter().cloned().collect::<Vec<_>>().join(", ")
                 );
@@ -212,33 +212,33 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("Test 5: Data Quality Check");
                 println!("==========================");
-                println!("✅ Response structure: Correct");
-                println!("✅ Game metadata: Present (title, slug, platform, category)");
-                println!("✅ Deal data: Complete (store_id, currency, prices, region)");
+                println!("[ok] Response structure: Correct");
+                println!("[ok] Game metadata: Present (title, slug, platform, category)");
+                println!("[ok] Deal data: Complete (store_id, currency, prices, region)");
                 println!(
-                    "✅ Multi-region support: Working ({} regions)",
+                    "[ok] Multi-region support: Working ({} regions)",
                     regions_found.len()
                 );
                 println!(
-                    "✅ Multi-currency support: Working ({} currencies)",
+                    "[ok] Multi-currency support: Working ({} currencies)",
                     currencies_found.len()
                 );
                 println!(
-                    "✅ Real store data: {} stores integrated",
+                    "[ok] Real store data: {} stores integrated",
                     stores_found.len()
                 );
             }
         }
         Err(e) => {
-            println!("❌ API call failed: {}", e);
+            println!("[error] API call failed: {}", e);
         }
     }
 
     println!("\n=== Nexarda Live API Verification Complete ===");
-    println!("✅ Authentication: WORKING");
-    println!("✅ Real product fetching: WORKING");
-    println!("✅ Multi-region pricing: WORKING");
-    println!("✅ Multi-currency support: WORKING");
+    println!("[ok] Authentication: WORKING");
+    println!("[ok] Real product fetching: WORKING");
+    println!("[ok] Multi-region pricing: WORKING");
+    println!("[ok] Multi-currency support: WORKING");
     println!();
     println!("Ready for production ingestion with:");
     println!("  • nexarda_catalogue_ingest (offline mode)");

@@ -92,7 +92,7 @@ pub async fn run(cfg: DbSchemaAuditConfig) -> Result<()> {
     }
 
     let mut out = String::new();
-    writeln!(out, "SCHEMA AUDIT (public) — total tables: {}", tables.len()).ok();
+    writeln!(out, "SCHEMA AUDIT (public) - total tables: {}", tables.len()).ok();
 
     for table in tables {
         let mut conn = pool.acquire().await?;

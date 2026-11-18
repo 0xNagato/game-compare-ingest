@@ -91,12 +91,12 @@ XBOX_BROWSE_CATEGORIES=Games  # Or specific: Action,RPG,Sports
 
 | Feature | PlayStation Store | Xbox Store (Browse API) |
 |---------|------------------|-------------------------|
-| **Year filtering** | ✅ Native (via sort + cutoff) | ⚠️ Manual (detect year boundary) |
-| **Pagination** | ✅ `offset` parameter | ✅ `skipItems` parameter |
-| **Page size** | ✅ 100-200 | ✅ 100-200 |
-| **Sort by date** | ✅ `productReleaseDate` | ✅ `orderBy=releaseDate` |
-| **Multi-market** | ✅ Region parameter | ✅ `market` parameter |
-| **Categories** | ✅ Category IDs | ✅ `categoryId` parameter |
+| **Year filtering** | Yes Native (via sort + cutoff) | Partial Manual (detect year boundary) |
+| **Pagination** | Yes `offset` parameter | Yes `skipItems` parameter |
+| **Page size** | Yes 100-200 | Yes 100-200 |
+| **Sort by date** | Yes `productReleaseDate` | Yes `orderBy=releaseDate` |
+| **Multi-market** | Yes Region parameter | Yes `market` parameter |
+| **Categories** | Yes Category IDs | Yes `categoryId` parameter |
 
 ## Implementation Code Outline
 

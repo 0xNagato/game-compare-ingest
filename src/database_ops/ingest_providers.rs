@@ -576,7 +576,7 @@ async fn provider_kind_supported(db: &Db) -> Result<bool> {
                 debug!("video_game_sources.category column detected");
             } else {
                 warn!(
-                    "video_game_sources.category column missing — falling back to legacy schema compatibility"
+                    "video_game_sources.category column missing - falling back to legacy schema compatibility"
                 );
             }
             Ok::<bool, anyhow::Error>(supported)
@@ -4399,7 +4399,7 @@ pub async fn ensure_offer_jurisdiction(
 
     // Modern schema: require jurisdictions table so we don't fail with relation errors.
     if !has_jurisdictions {
-        warn!("jurisdictions table missing; cannot create offer_jurisdictions — skipping");
+        warn!("jurisdictions table missing; cannot create offer_jurisdictions - skipping");
         return Ok(0);
     }
 
@@ -5139,7 +5139,7 @@ pub async fn ensure_national_jurisdiction(db: &Db, country_id: i64) -> Result<i6
                 "jurisdictions table missing and countries table missing; cannot derive national jurisdiction in php compat mode (need countries or an existing sku_regions row)"
             );
         }
-        warn!("jurisdictions table missing; cannot ensure national jurisdiction — skipping");
+        warn!("jurisdictions table missing; cannot ensure national jurisdiction - skipping");
         return Ok(0);
     }
 

@@ -438,13 +438,13 @@ RUST_API_TIMEOUT=60
 
 ## Next Steps
 
-1. ✅ API server implemented
-2. ✅ Laravel HTTP client created
-3. ⏳ Implement actual ingestion trigger logic
-4. ⏳ Add real-time price query endpoints
-5. ⏳ Set up monitoring and metrics
-6. ⏳ Add rate limiting
-7. ⏳ Implement caching layer
-8. ⏳ Create Postman/Insomnia collection
-9. ⏳ Write integration tests
-10. ⏳ Deploy to production
+1. API server implemented
+2. Laravel HTTP client created
+3. Implement actual ingestion trigger logic
+4. Add real-time price query endpoints
+5. Set up monitoring and metrics
+6. Add rate limiting
+7. Implement caching layer
+8. Create Postman/Insomnia collection
+9. Write integration tests
+10. Deploy to production

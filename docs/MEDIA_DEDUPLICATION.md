@@ -341,4 +341,4 @@ WHERE url LIKE '%old-cdn.com%';
 - Original analysis: `migrations/0525_storage_optimizations.sql`
 - Duplicate URL view: `duplicate_media_urls`
 - Media architecture: `docs/MEDIA_ARCHITECTURE.md`
-- Provider ingestion: `CLAUDE.md`
+- Provider ingestion: `src/database_ops/ingest_providers.rs`

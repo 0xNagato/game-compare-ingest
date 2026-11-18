@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
 
     let start = Instant::now();
 
-    // Phase A: JSON-first (Nexarda, GiantBomb) — run sequentially
+    // Phase A: JSON-first (Nexarda, GiantBomb) - run sequentially
     // 1) Nexarda
     let nx = NexardaProvider::new(
         std::env::var("NEXARDA_BASE_URL").ok().as_deref(),

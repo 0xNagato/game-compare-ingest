@@ -68,7 +68,7 @@ async fn query_product(token: &str, product_id: &str, market: &str) -> Result<Va
 fn display_prices(result: &Value, game_name: &str, market: &str) {
     if let Some(products) = result["Products"].as_array() {
         if products.is_empty() {
-            println!("  ⚠️  Not available in {} market", market);
+            println!("  [warn]  Not available in {} market", market);
             return;
         }
 
@@ -97,13 +97,13 @@ fn display_prices(result: &Value, game_name: &str, market: &str) {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("???");
 
-                                println!("  ✅ {}", title);
-                                println!("  💰 {}: {:.2} {}", market, list_price, currency);
+                                println!("  [ok] {}", title);
+                                println!("  {}: {:.2} {}", market, list_price, currency);
 
                                 if msrp > 0.0 && (msrp - list_price).abs() > 0.01 {
                                     let discount = ((msrp - list_price) / msrp * 100.0).round();
                                     println!(
-                                        "  🎉 {}% OFF (was {:.2} {})",
+                                        "  {}% OFF (was {:.2} {})",
                                         discount, msrp, currency
                                     );
                                 }
@@ -114,10 +114,10 @@ fn display_prices(result: &Value, game_name: &str, market: &str) {
                 }
             }
 
-            println!("  📦 {} (Price not available)", title);
+            println!("  {} (Price not available)", title);
         }
     } else {
-        println!("  ⚠️  No data for {} market", market);
+        println!("  [warn]  No data for {} market", market);
     }
 }
 
@@ -125,12 +125,12 @@ fn display_prices(result: &Value, game_name: &str, market: &str) {
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
 
-    println!("\n🎮 Xbox Store Price Checker");
+    println!("\nXbox Store Price Checker");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    println!("🔑 Authenticating...");
+    println!("Authenticating...");
     let token = get_token().await.context("Failed to get access token")?;
-    println!("✅ Authenticated!\n");
+    println!("[ok] Authenticated!\n");
 
     // Product catalog - add your own product IDs here
     let products = vec![
@@ -144,15 +144,15 @@ async fn main() -> Result<()> {
 
     for (product_id, game_name) in &products {
         println!("═══════════════════════════════════════════════════════════");
-        println!("🎮 {}", game_name);
+        println!("{}", game_name);
         println!("═══════════════════════════════════════════════════════════\n");
 
         for market in &markets {
-            println!("📍 {}:", market);
+            println!("{}:", market);
 
             match query_product(&token, product_id, market).await {
                 Ok(result) => display_prices(&result, game_name, market),
-                Err(e) => println!("  ❌ Error: {}", e),
+                Err(e) => println!("  [error] Error: {}", e),
             }
             println!();
         }
@@ -160,7 +160,7 @@ async fn main() -> Result<()> {
 
     println!("═══════════════════════════════════════════════════════════");
     println!(
-        "\n✅ Done! To add more games, edit the products vector in src/bin/xbox_store_prices.rs"
+        "\n[ok] Done! To add more games, edit the products vector in src/bin/xbox_store_prices.rs"
     );
 
     Ok(())

@@ -12,12 +12,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Show what igdb-rs crate supports
     println!("Supported via igdb-rs library:");
-    println!("  ✅ Games API endpoint");
-    println!("  ✅ Cover images (artwork.url)");
-    println!("  ✅ Screenshots (screenshots.url)");
-    println!("  ✅ Videos (game_videos)");
-    println!("  ✅ Involved Companies, Platforms, Genres");
-    println!("  ✅ Rate limiting (30 requests/minute default)");
+    println!("  [ok] Games API endpoint");
+    println!("  [ok] Cover images (artwork.url)");
+    println!("  [ok] Screenshots (screenshots.url)");
+    println!("  [ok] Videos (game_videos)");
+    println!("  [ok] Involved Companies, Platforms, Genres");
+    println!("  [ok] Rate limiting (30 requests/minute default)");
 
     println!("\n=== Typical IGDB Game Response Structure ===\n");
 
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Cover
     if sample_game.get("cover").is_some() {
-        println!("✅ Cover Image (1 item)");
+        println!("[ok] Cover Image (1 item)");
         if let Some(url) = sample_game
             .get("cover")
             .and_then(|c| c.get("url"))
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Screenshots
     if let Some(shots) = sample_game.get("screenshots").and_then(|s| s.as_array()) {
-        println!("\n✅ Screenshots ({} items)", shots.len());
+        println!("\n[ok] Screenshots ({} items)", shots.len());
         for (i, shot) in shots.iter().enumerate() {
             if let Some(url) = shot.get("url").and_then(|u| u.as_str()) {
                 println!("   [{}] {}...", i + 1, &url[..60.min(url.len())]);
@@ -121,7 +121,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Artworks (additional images)
     if let Some(arts) = sample_game.get("artworks").and_then(|a| a.as_array()) {
-        println!("\n✅ Artworks ({} items)", arts.len());
+        println!("\n[ok] Artworks ({} items)", arts.len());
         for (i, art) in arts.iter().enumerate() {
             if let Some(url) = art.get("url").and_then(|u| u.as_str()) {
                 println!("   [{}] {}...", i + 1, &url[..60.min(url.len())]);
@@ -132,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Videos
     if let Some(vids) = sample_game.get("videos").and_then(|v| v.as_array()) {
-        println!("\n✅ Videos ({} items)", vids.len());
+        println!("\n[ok] Videos ({} items)", vids.len());
         for (i, vid) in vids.iter().enumerate() {
             let name = vid.get("name").and_then(|n| n.as_str()).unwrap_or("Video");
             let vid_id = vid.get("video_id").and_then(|id| id.as_str()).unwrap_or("");
@@ -143,8 +143,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     println!("\n=== IGDB Media Summary ===");
-    println!("✅ Total media items: {}", media_count);
-    println!("✅ Media types supported:");
+    println!("[ok] Total media items: {}", media_count);
+    println!("[ok] Media types supported:");
     println!("     • Covers (1 item)");
     println!("     • Screenshots (array, typically 3-10+)");
     println!("     • Artworks (additional high-res images)");
@@ -157,18 +157,18 @@ async fn main() -> anyhow::Result<()> {
     println!("where id = 119171;");
 
     println!("\n=== Current Implementation Status ===");
-    println!("✅ File-based ingestion: Fully implemented");
+    println!("[ok] File-based ingestion: Fully implemented");
     println!("   • Supports JSON arrays or objects");
     println!("   • Extracts cover, screenshots, videos");
     println!("   • Stores in game_media and provider_media_links");
     println!("   • Handles YouTube video_id conversion");
-    println!("\n⚠️  Live API (igdb-rs): Stub phase");
+    println!("\n[warn]  Live API (igdb-rs): Stub phase");
     println!("   • igdb-rs crate integrated");
     println!("   • Rate limiting configured (30 req/min)");
     println!("   • Ready for implementation");
     println!("   • Requires TWITCH credentials (OAuth)");
 
-    println!("\n✅ IGDB media collection test complete!");
+    println!("\n[ok] IGDB media collection test complete!");
     println!("Media is extensively structured with:");
     println!("  • Cover artwork for game presentation");
     println!("  • Multiple screenshots for gameplay previews");

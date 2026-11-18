@@ -9,7 +9,7 @@ async fn main() -> anyhow::Result<()> {
     println!("==============================");
 
     let provider = ItadProvider::new(None, Some(15))?;
-    println!("✅ ItadProvider initialized");
+    println!("[ok] ItadProvider initialized");
     println!("   • Base URL: https://api.isthereanydeal.com/v2");
     println!("   • Timeout: 15 seconds");
     println!("   • HTTP client: Configured\n");
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
 
     match provider.search_game("Elden Ring").await {
         Ok(games) if !games.is_empty() => {
-            println!("✅ Search succeeded");
+            println!("[ok] Search succeeded");
             println!("   • Results found: {}", games.len());
             println!("   • First 3 games:");
             for (idx, game) in games.iter().take(3).enumerate() {
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
             if let Some(first_game) = games.first() {
                 match provider.game_overview(&first_game.id).await {
                     Ok((game, media)) => {
-                        println!("✅ Game overview retrieved");
+                        println!("[ok] Game overview retrieved");
                         println!("   • Title: {}", game.title);
                         println!("   • Slug: {}", game.slug);
                         if let Some(url) = &game.image_url {
@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                         println!();
 
-                        println!("✅ Media collection");
+                        println!("[ok] Media collection");
                         println!("   • Total media items: {}", media.len());
 
                         // Group media by type
@@ -78,16 +78,16 @@ async fn main() -> anyhow::Result<()> {
                         println!();
                     }
                     Err(e) => {
-                        println!("⚠️  Game overview fetch failed: {}", e);
+                        println!("[warn]  Game overview fetch failed: {}", e);
                     }
                 }
             }
         }
         Ok(_) => {
-            println!("⚠️  Search returned no results");
+            println!("[warn]  Search returned no results");
         }
         Err(e) => {
-            println!("❌ Search failed: {}", e);
+            println!("[error] Search failed: {}", e);
         }
     }
 
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
 
     match provider.get_trending(Some(5)).await {
         Ok(games) => {
-            println!("✅ Trending games retrieved");
+            println!("[ok] Trending games retrieved");
             println!("   • Games found: {}", games.len());
             println!("   • Top 5:");
             for (idx, game) in games.iter().enumerate() {
@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
             println!();
         }
         Err(e) => {
-            println!("❌ Trending fetch failed: {}", e);
+            println!("[error] Trending fetch failed: {}", e);
         }
     }
 
@@ -119,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
 
     match provider.get_latest_deals(Some(10), None).await {
         Ok(deals) => {
-            println!("✅ Latest deals retrieved");
+            println!("[ok] Latest deals retrieved");
             println!("   • Deals found: {}", deals.len());
             if !deals.is_empty() {
                 println!("   • First 3 deals:");
@@ -139,17 +139,17 @@ async fn main() -> anyhow::Result<()> {
             println!();
         }
         Err(e) => {
-            println!("❌ Deals fetch failed: {}", e);
+            println!("[error] Deals fetch failed: {}", e);
         }
     }
 
     // Summary
     println!("=== ITAD Provider Verification Complete ===");
-    println!("✅ Provider initialization: WORKING");
-    println!("✅ Game search: WORKING");
-    println!("✅ Game overview + media: WORKING");
-    println!("✅ Trending games: WORKING");
-    println!("✅ Latest deals: WORKING");
+    println!("[ok] Provider initialization: WORKING");
+    println!("[ok] Game search: WORKING");
+    println!("[ok] Game overview + media: WORKING");
+    println!("[ok] Trending games: WORKING");
+    println!("[ok] Latest deals: WORKING");
     println!();
     println!("Ready for production integration with:");
     println!("  • Media collection support (images + videos)");

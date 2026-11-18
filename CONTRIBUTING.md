@@ -1,195 +1,40 @@
-# Contributing Guidelines
+# Contributing
 
-## SQL Query Standards
+## Building
 
-### ✅ REQUIRED: Use `sqlx::query!()` Macro
-
-All SQL queries **MUST** use the compile-time validated `query!()` macro family:
-
-```rust
-// ✅ CORRECT: Compile-time validated
-let id = sqlx::query_scalar!(
-    "SELECT id FROM providers WHERE name = $1",
-    &name
-)
-.fetch_one(&pool)
-.await?;
-
-// ❌ FORBIDDEN: Runtime prepared statements
-let id: i64 = sqlx::query("SELECT id FROM providers WHERE name = $1")
-    .bind(&name)
-    .fetch_one(&pool)
-    .await?
-    .get(0);
-```
-
-### Why?
-
-| `query!()` Macro | `query()` Runtime |
-|------------------|-------------------|
-| ✅ SQL validated at compile time | ❌ Errors only at runtime |
-| ✅ Type safety guaranteed | ❌ Manual type casting |
-| ✅ Auto-generated struct fields | ❌ Manual `.get()` extraction |
-| ✅ IDE autocomplete | ❌ No autocomplete |
-| ✅ Catches schema drift | ❌ Silent failures |
-
-### Macro Family
-
-```rust
-// Single scalar value (id, count, bool)
-let count: i64 = sqlx::query_scalar!(
-    "SELECT COUNT(*) FROM table"
-).fetch_one(&pool).await?;
-
-// Single row, multiple columns
-let row = sqlx::query!(
-    "SELECT id, name, created_at FROM table WHERE id = $1",
-    entity_id
-).fetch_one(&pool).await?;
-// Auto-fields: row.id, row.name, row.created_at
-
-// Multiple rows
-let rows = sqlx::query_as!(
-    MyStruct,
-    "SELECT id, name FROM table"
-).fetch_all(&pool).await?;
-```
-
-### Exceptions (Dynamic SQL)
-
-`query()` is **acceptable** only for:
-- Dynamic table/column names (QueryBuilder)
-- Bulk inserts with variable row counts
-- Test utilities
-
-Mark exceptions with comment:
-```rust
-// DYNAMIC SQL: Table name from user input
-let table = format!("prices_{}", partition_suffix);
-let rows = sqlx::query(&format!("SELECT * FROM {}", table))
-    .fetch_all(&pool)
-    .await?;
-```
-
-### Setup
-
-1. **Install sqlx-cli**:
-   ```bash
-   cargo install sqlx-cli --no-default-features --features postgres
-   ```
-
-2. **Prepare metadata** (run after schema changes):
-   ```bash
-   export DATABASE_URL="postgresql://user:pass@localhost:5432/db"
-   cargo sqlx prepare
-   ```
-
-3. **Install pre-commit hook**:
-   ```bash
-   chmod +x .git/hooks/pre-commit
-   ```
-
-### Pre-Commit Hook
-
-The hook **automatically rejects** commits with `sqlx::query()` in production code:
-
-```
-❌ ERROR: Found sqlx::query() in production code
-
-src/database_ops/ingest_providers.rs:
-16:    let rec = sqlx::query("SELECT id FROM ...")
-
-📚 Migration guide: docs/SQLX_QUERY_AUDIT.md
-```
-
-Bypass (discouraged):
-```bash
-git commit --no-verify
-```
-
-### Migration Guide
-
-See **[docs/SQLX_QUERY_AUDIT.md](docs/SQLX_QUERY_AUDIT.md)** for:
-- File-by-file conversion checklist
-- Before/after examples
-- Common patterns
-- Troubleshooting
-
-### Testing
-
-Before submitting PR:
+The PlayStation Store client is a separate, private crate. `Cargo.toml` expects it at `./psstore_client`, so the
+crate only builds with it checked out next to `src/`.
 
 ```bash
-# Validate all queries against live DB
-cargo sqlx prepare --check
-
-# Run tests
+cargo build --release
+cargo fmt --check
+cargo clippy
 cargo test
-
-# Check pre-commit hook
-git add .
-git commit -m "test" --dry-run
 ```
 
-### CI/CD
+One-off probes and experiments live in `examples/` and run with `cargo run --example <name>`. Long-running workers
+and operational tools live in `src/bin/`.
 
-GitHub Actions validates queries in offline mode:
-```yaml
-- run: cargo sqlx prepare --check
-- run: cargo build --offline
-```
+## SQL
 
----
+- Queries go through `sqlx` with bound parameters: `sqlx::query("... WHERE name = $1").bind(&name)`. Never format a
+  value into the SQL string.
+- New code may use the compile-time checked `sqlx::query!()` family. It needs `DATABASE_URL` at build time, so keep
+  it to code that is built against a live schema.
+- Tables live in the `public` schema; no schema prefix is needed.
 
-## Database Standards
+## Migrations
 
-### Schema Qualification
+- Add migrations to `migrations/` with the next free number.
+- Make them safe to re-run (`CREATE ... IF NOT EXISTS`, `ON CONFLICT DO NOTHING`).
+- Create indexes on large tables `CONCURRENTLY`.
+- The `prices` table is partitioned by month; new partitions follow the existing naming.
 
-Use the public schema (no prefix needed):
-```sql
--- ✅ CORRECT
-SELECT id FROM providers WHERE name = $1
+## Pull requests
 
--- ❌ WRONG
-SELECT id FROM providers WHERE name = $1
-```
+- `cargo fmt --check`, `cargo clippy` and `cargo test` pass.
+- Schema changes come with a migration and a note on how to roll it back.
+- The `no-sprawl` workflow fails a pull request that adds or renames files unless its description contains a
+  `Justification:` line saying why the files are needed.
 
-### Migrations
-
-- **Idempotent**: Safe to re-run
-- **Reversible**: Document rollback steps
-- **Partitioned**: Monthly for `prices` table
-- **Concurrent indexes**: Use `CONCURRENTLY` for production
-
-See [migrations/README.md](migrations/README.md)
-
----
-
-## Code Style
-
-### Rust
-
-- **Format**: `cargo fmt`
-- **Lint**: `cargo clippy -- -D warnings`
-- **Test**: `cargo test --all-features`
-
-### SQL
-
-- **Lowercase keywords**: `select`, `from`, `where`
-- **Indentation**: 2 spaces
-- **Comments**: Explain WHY, not WHAT
-
----
-
-## Pull Request Checklist
-
-- [ ] All queries use `query!()` macro
-- [ ] `cargo sqlx prepare` run and committed
-- [ ] Tests pass (`cargo test`)
-- [ ] Pre-commit hook passes
-- [ ] Schema changes documented in migration comments
-- [ ] Performance impact assessed (EXPLAIN ANALYZE)
-
----
-
-**Questions?** See [docs/SQLX_QUERY_AUDIT.md](docs/SQLX_QUERY_AUDIT.md) or ask in #dev-rust
+Questions: open an issue on this repository.
